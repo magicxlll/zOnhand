@@ -10,3 +10,7 @@ sim/build/
 
 # Local credential file (token lives in .git/.git-credentials-local, outside this repo)
 .git-credentials
+
+# Sim build outputs + lvgl symlink (rebuilt via docs/spec-phase-1.md §10b)
+sim/ebook-emulator/build*/
+sim/ebook-emulator/lvgl

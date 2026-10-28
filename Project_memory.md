@@ -41,9 +41,19 @@ Mục tiêu (chốt 2026-10-28, sau phỏng vấn intent):
 - [x] Intent chốt, REA phân tích 4 nguồn (REA, reader-simulator, CloudZao, RickyOS install page)
 - [x] Ảnh marketing thiết bị + phím vật lý đã chụp (source cho spec input mapping)
 - [x] **Bước 1 (2026-10-28): Clone CloudZao về `vendor/cloudzao/`, đọc `config.h` + `metalio_keys.cc` + `lv_adapter_epdiy.cc` → có GPIO/IO map thật (xem §3 — sửa theo source, bỏ giả định "núm xoay")**. Node v26.12.1 (đủ cho REA), gh token scope bị giới hạn nhưng git HTTPS OK.
-- [ ] **Spec/plan/tasks pha 1** — đủ context, viết tiếp theo user request (chi tiết, có tracking, cho agent khác đọc tiếp được)
+- [x] **Spec/plan/tasks + skills + rules + ADR + ref scans** (docs/, .claude/, README, file này) — đã commit+push lần đầu lên `magicxlll/zOnhand` (commit aeb2467)
+- [x] **ESP-IDF v6.1 install ở `~/esp/esp-idf`** (Python 3.14 env, target `esp32s31` được hỗ trợ chính thức — B4 hạ cấp). BUILD FW THẬT fail: thiếu managed components `78__uart-uhci`, `espressif__iot_eth` (không có trong `main/idf_component.yml`) → **chờ user decide** (thêm dep + vendor file, hay chấp nhận baseline = harness native).
+- [x] **T1 de-risk: harness native `ebook_sim` build + CHẠY được trên macOS** (SDL2 window, LVGL init, đọc .ebook) sau 5 vá trong `sim/` (chi tiết `docs/spec-phase-1.md` §10b Phát hiện #4).
+- [ ] **Debug crash SIGSEGV**: `lv_font_get_line_height(NULL)` trong `BuildScreen` (font epdfont chưa ready) — next action đầu tiên.
 - [ ] REA phân tích `RickyOS-Plus-1.2.9-full.bin` → danh sách tính năng (đề xuất, user review)
-- [ ] Vận hành dự án: skill + rules + docs + file này + backup lên `magicxlll/zOnhand` (git HTTPS đã OK; gh CLI chưa)
+
+## 5. Blockers & Open Questions
+
+- **gh token của `magicxlll` thiếu scope `read:org`** → `gh` CLI không auth được; **git HTTPS OK** (token repo-local `.git/.git-credentials-local`, KHÔNG commit). Backup chạy qua `git push`.
+- `RickyOS-Plus-1.2.9-full.bin` là **không phải** fw chính thức phát hành (trang demo ghi "chính thức chưa phát hành") — vật phẩm tham khảo.
+- CloudZao fw AI voice (Baiwen) cần Wi-Fi/MQTT/WebSocket — pha 2, stub no-op trong pha 1.
+- **Build fw thật (baseline) fail**: thiếu managed components `78__uart-uhci` + `espressif__iot_eth` (REQUIRES `main/CMakeLists.txt:230` nhưng KHÔNG có trong `main/idf_component.yml`; `managed_components/` ship thiếu). Chờ user decide: (a) thêm dep + fetch (đụng vendor), hay (b) chấp nhận "baseline build" = harness native + ghi nhận.
+- **Crash `ebook_sim` (SIGSEGV font NULL)**: đang debug — xem `docs/spec-phase-1.md` §10b Phát hiện #4.
 
 ## 5b. Phát hiện từ source (đúng 100%, dùng cho spec — không được thay bằng đoán)
 

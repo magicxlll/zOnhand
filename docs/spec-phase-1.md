@@ -311,7 +311,8 @@ Cập nhật **bắt buộc** sau mỗi debug/task (ghi: gì đã chạy, gì đ
 
 | Source | Vị trí | Ghi chú |
 |---|---|---|
-| CloudZao source | `vendor/cloudzao/` (shallow clone) | pin SHA: chạy `cd vendor/cloudzao && git rev-parse HEAD` | 
+| CloudZao source | `vendor/cloudzao/` (shallow clone) | **PIN HEAD = `2f55cb1234baae4968982feb23e7a9001dac16f0`** (verify lại `git rev-parse HEAD` sau mỗi pull) |
+| ESP-IDF | tag `v6.1` (tồn tại, verify 2026-10-28) — đang install ở `~/esp/esp-idf` | target `esp32s31` (RISC-V, `CONFIG_IDF_TARGET_ARCH_RISCV=y` trong sdkconfig). Rủi ro B4: toolchain RISC-V cho s31 phải install được — check khi IDF xong. |
 | Board config | `vendor/cloudzao/main/boards/metalio-e-ink4-plus/config.h` | GPIO/IO map, TCA port, touch offset |
 | Key driver | `vendor/cloudzao/main/boards/metalio-e-ink4-plus/input/metalio_keys.cc` | debounce, power click latch, shutdown pulse |
 | Dispatch | `vendor/cloudzao/main/display/lv_adapter_epdiy.cc` (520–660) | VOL+/VOL- semantics (reading vs menu) |
@@ -325,12 +326,52 @@ Cập nhật **bắt buộc** sau mỗi debug/task (ghi: gì đã chạy, gì đ
 
 ---
 
-## 10. Next Actions (cho agent kế tiếp, theo thứ tự)
+## 10b. Cập nhật phát hiện (2026-10-28, sau khi clone + đọc source)
 
-1. **T1** (blocker): build skeleton sim. Gặp B1 (ESP-IDF host-sim không build được) → escalate user (đề xuất fork sang PlatformIO, **phải hỏi**).
-2. Song song: REA setup + scan .bin (mục 7).
-3. Mỗi task xong: commit + push + cập nhật `Project_memory.md` + đánh dấu `[x]` trong file này.
-4. User chưa có máy thật → baseline hành vi = docs + RickyOS bằng chứng. **Đừng "đoán" hành vi máy thật** — chỉ dùng source + docs + RickyOS.
+### Phát hiện #1 — CloudZao ĐÃ CÓ sẵn harness native-LVGL (giảm mạnh B1)
+
+`vendor/cloudzao/tools/ebook/emulator/` là harness build **LVGL native (SDL) + WASM** cho module `main/reader` (nucleus đọc sách), dùng:
+- `src/esp_compat/` (8 header shim ESP-IDF: esp_log, esp_heap_caps, esp_timer, esp_err, esp_cpu, esp_partition, ff.h, sd_paths.h).
+- Guard compile-time `EBOOK_EMULATOR` (đúng 3 file trong `main/reader/`: book_session.cc, epub_document.cc, ebook_document.cc) — khi define, fw loại include FreeRTOS/esp thật, chạy native.
+- Panel target là **E-Ink 4 (480×800) chứ KHÔNG phải Plus (684×1216)** — tức harness này chạy được module reader trên host, nhưng chưa phải "VM Plus".
+- LVGL vendored: `tools/ebook/emulator/lvgl/` (52MB, không có demos/examples → phải tắt `LV_BUILD_DEMOS/EXAMPLES` khi build).
+
+**Hệ quả:**
+- **T1 (đặt nền build host) KHÔNG cần viết từ đầu** — dùng harness có sẵn làm proof-of-concept, rồi mở rộng (thêm shim + panel 684×1216 + key/touch) thành "VM Plus" thật sự. Rủi ro B1 giảm từ "viết ESP-IDF host-sim layer từ 0" thành "mở rộng harness có sẵn + bổ sung shim key/touch/I2C/SD/NVS".
+- **T7 (book reader flow)** gần như có sẵn (module reader đã build native được, đúng panel Plus cần đổi size 684×1216).
+
+### Phát hiện #2 — Build fw thật (baseline) fail vì thiếu managed components
+
+`idf.py build` (ESP-IDF v6.1, target `esp32s31`) fail:
+- `78__uart-uhci`, `espressif__iot_eth` (và có thể `esp_driver_cam`/`esp_driver_i2c`) **không có trong `main/idf_component.yml`** nhưng được `REQUIRES` trong `main/CMakeLists.txt:230`.
+- Có vẻ repo ship `managed_components/` (19 thành viên, nhưng thiếu `78__uart-uhci` + `espressif__iot_eth`) — clone không fetch đủ, hoặc repo upstream thiếu lockfile.
+- **Không blocking T1** (harness native dùng LVGL vendored, không cần IDF). Nhưng acceptance "idf.py build vẫn pass" (T1/T-baseline) cần: (a) thêm `78/uart-uhci` + `espressif/iot-eth` vào `main/idf_component.yml` (SỬA FILE VENDOR — cần user approve), hoặc (b) `idf.py --install-shdeps`/re-fetch component manager.
+- ⚠️ Chờ user approve việc sửa `vendor/cloudzao/main/idf_component.yml` (rule §1.1: không sửa vendor).
+
+### Phát hiện #3 — `App_Main` boot phụ thuộc network (điểm chết T2)
+
+`Application::Start()` (main/application.cc:1331): `chat_cloud::InitializeFromNvs` → `board.StartNetwork()` → `CheckNewVersion`/`CheckChatActivation`. Trong build open-source cloud endpoints **trống** (`api::HasDefaultOtaUrl()==false`), nên network/activation sẽ skip (xem `StartXiaozhiVoice` đã guard). T2 phải verify: boot có **chặn** ở `board.StartNetwork()` (mất mạng → treo?) không — cần đọc `board.StartNetwork` + stub wifi. **Ghi chú: đây là rủi ro T2, chưa verify.**
+
+### Phát hiện #4 — `ebook_sim` CHẠY được trên macOS (de-risk T1 mạnh nhất) + crash đang debug
+
+Harness `sim/ebook-emulator/` (copy từ `vendor/.../tools/ebook/emulator/`, symlink lvgl) **build + chạy thật**: SDL2 window mở, LVGL init, đọc `.ebook`. Vá 5 chỗ (đều trong `sim/`, không đụng vendor):
+
+1. `lv_conf.h`: `LV_USE_SDL=1`, `LV_USE_X11=0`, `LV_USE_EVDEV=0`, `LV_USE_THORVG_INTERNAL=0`, `LV_USE_LOTTIE=0`, `LV_USE_VECTOR_GRAPHIC=0`, `LV_BUILD_DEMOS=0`, `LV_BUILD_EXAMPLES=0`.
+2. `src/emulator/image_util_emulator.cc`: upgrade `DecodeImageToL8`/`DecodeImageFileToL8` lên 7-arg (khớp header vendor mới, thêm `cancelled`/`context`); thêm `WriteFileAtomic` (host .tmp+rename) + `DecodeZipEntryImageToL8` (host: `ZipReader::ReadEntry` → buffered decode).
+3. `CMakeLists.txt`: thêm `-L$(SDL2_LIBRARY_DIRS)` (pkg-config Homebrew thiếu libdir → `-lSDL2main` không resolve được).
+4. Build flags: `cmake -B build-ebook -S . -DESP_MAIN=.../vendor/cloudzao/main`.
+
+**Cách chạy:** `EBOOK_EPDFONT=.../misans_25_2.ef EBOOK_PATH=.../sample.ebook ./build-ebook/bin/ebook_sim -b sdl -W 684 -H 1216`. `.ebook` tạo bằng `python3 tools/ebook/convert_ebook.py <txt> -o out.ebook` (chạy trong `vendor/cloudzao/tools/ebook/`).
+
+**Crash hiện tại (debug dở, 2026-10-28 22:50):** `SIGSEGV` @ `lv_font_get_line_height(NULL)` khi `BuildScreen()` tạo footer label (crash stack: `BuildScreen → lv_label_create → lv_obj_refresh_style → lv_font_get_line_height`). Nghĩa là `ListFont()`/`UiFont()` trả NULL → `epdfont_get_lv_font(epdfont)` không trả lv_font hợp lệ. Gốc: epdfont chưa load thành công (glue `epdfont_emulator_set_path`/`epdfont_open` trong sim, hay file `.ef` sai kích cỡ — harness target 480×800, chưa khớp Plus 684×1216). **Next: trace `epdfont_open` kết quả + kiểm tra glue font trong sim có wire `epdfont_emulator_set_path` thật không (main_ebook.c chỉ set path, chưa rõ ai gọi).**
+
+## 11. Next Actions (cập nhật 2026-10-28, thay thế §10)
+
+1. **T1 (revise):** CHẠY được `ebook_sim` harness trên macOS (đang build) → proof native-LVGL khả thi. Sau đó viết `sim/build.sh` chuẩn hóa + thêm panel Plus 684×1216.
+2. **T2:** verify boot không treo ở `board.StartNetwork` (stub wifi); gọi `Application::GetInstance().Start()` trong sim.
+3. **T3:** EPD renderer 684×1216 (đổi panel từ harness 480×800).
+4. **B2 (fw baseline):** escalate user — cần approve sửa `main/idf_component.yml` (thêm 2 managed components) để `idf.py build` pass.
+5. REA phân tích `RickyOS-Plus-1.2.9-full.bin` (song song, mục 7).
 
 ---
 
