@@ -1,0 +1,12 @@
+.git-credentials
+
+# Large / generated — do not track in backup repo
+RickyOS-Plus-1.2.9-full.bin
+firmware-reference/*.bin
+vendor/
+
+# Sim build output
+sim/build/
+
+# Local credential file (token lives in .git/.git-credentials-local, outside this repo)
+.git-credentials
