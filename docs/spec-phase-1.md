@@ -352,26 +352,26 @@ Cập nhật **bắt buộc** sau mỗi debug/task (ghi: gì đã chạy, gì đ
 
 `Application::Start()` (main/application.cc:1331): `chat_cloud::InitializeFromNvs` → `board.StartNetwork()` → `CheckNewVersion`/`CheckChatActivation`. Trong build open-source cloud endpoints **trống** (`api::HasDefaultOtaUrl()==false`), nên network/activation sẽ skip (xem `StartXiaozhiVoice` đã guard). T2 phải verify: boot có **chặn** ở `board.StartNetwork()` (mất mạng → treo?) không — cần đọc `board.StartNetwork` + stub wifi. **Ghi chú: đây là rủi ro T2, chưa verify.**
 
-### Phát hiện #4 — `ebook_sim` CHẠY được trên macOS (de-risk T1 mạnh nhất) + crash đang debug
+### Phát hiện #4 — `ebook_sim` CHẠY được trên macOS (T1 de-risk XONG) + crash đã fix
 
-Harness `sim/ebook-emulator/` (copy từ `vendor/.../tools/ebook/emulator/`, symlink lvgl) **build + chạy thật**: SDL2 window mở, LVGL init, đọc `.ebook`. Vá 5 chỗ (đều trong `sim/`, không đụng vendor):
+Harness `sim/ebook-emulator/` (copy từ `vendor/.../tools/ebook/emulator/`, symlink lvgl) **build + chạy thật**: SDL2 window 684×1216 mở, LVGL init, đọc `.ebook` (1 chapter), chạy ổn >7s không crash. Vá trong `sim/` (không đụng vendor):
 
-1. `lv_conf.h`: `LV_USE_SDL=1`, `LV_USE_X11=0`, `LV_USE_EVDEV=0`, `LV_USE_THORVG_INTERNAL=0`, `LV_USE_LOTTIE=0`, `LV_USE_VECTOR_GRAPHIC=0`, `LV_BUILD_DEMOS=0`, `LV_BUILD_EXAMPLES=0`.
-2. `src/emulator/image_util_emulator.cc`: upgrade `DecodeImageToL8`/`DecodeImageFileToL8` lên 7-arg (khớp header vendor mới, thêm `cancelled`/`context`); thêm `WriteFileAtomic` (host .tmp+rename) + `DecodeZipEntryImageToL8` (host: `ZipReader::ReadEntry` → buffered decode).
-3. `CMakeLists.txt`: thêm `-L$(SDL2_LIBRARY_DIRS)` (pkg-config Homebrew thiếu libdir → `-lSDL2main` không resolve được).
-4. Build flags: `cmake -B build-ebook -S . -DESP_MAIN=.../vendor/cloudzao/main`.
+1. `lv_conf.h`: `LV_USE_SDL=1`, `LV_USE_X11=0`, `LV_USE_EVDEV=0`, `LV_USE_THORVG_INTERNAL=0`, `LV_USE_LOTTIE=0`, `LV_USE_VECTOR_GRAPHIC=0`, `LV_BUILD_DEMOS/EXAMPLES=0`.
+2. `src/emulator/image_util_emulator.cc`: `DecodeImageToL8`/`DecodeImageFileToL8` lên 7-arg (khớp header vendor mới); thêm `WriteFileAtomic` + `DecodeZipEntryImageToL8` (host: `ZipReader::ReadEntry` → buffered decode).
+3. `CMakeLists.txt`: thêm `-L$(SDL2_LIBRARY_DIRS)` (Homebrew pkg-config thiếu libdir → `-lSDL2main` không resolve).
+4. `src/main_ebook.c`: default font path fallback (không cần env).
+5. **Crash SIGSEGV đã fix (root cause):** `emulator/assets/fonts/misans_25_2.ef` là **symlink hỏng upstream** (88-byte text chứa path tuyệt đối của tác giả gốc) → `epdfont_open` đọc sai magic → NULL → crash `lv_font_get_line_height(NULL)`. Sửa bằng symlink đúng về `vendor/cloudzao/tools/epdfont/MiSans-Light/misans_25_2.ef` (font thật, magic `EPDFONT`).
+6. `sim/run.sh`: launcher end-to-end (build + gen sample `.ebook` + chạy, không cần env).
 
-**Cách chạy:** `EBOOK_EPDFONT=.../misans_25_2.ef EBOOK_PATH=.../sample.ebook ./build-ebook/bin/ebook_sim -b sdl -W 684 -H 1216`. `.ebook` tạo bằng `python3 tools/ebook/convert_ebook.py <txt> -o out.ebook` (chạy trong `vendor/cloudzao/tools/ebook/`).
+**Run:** `cd sim && ./run.sh`. **Panel hiện tại: 480×800 (E-Ink4)** — T3 sẽ retarget 684×1216 (Plus).
 
-**Crash hiện tại (debug dở, 2026-10-28 22:50):** `SIGSEGV` @ `lv_font_get_line_height(NULL)` khi `BuildScreen()` tạo footer label (crash stack: `BuildScreen → lv_label_create → lv_obj_refresh_style → lv_font_get_line_height`). Nghĩa là `ListFont()`/`UiFont()` trả NULL → `epdfont_get_lv_font(epdfont)` không trả lv_font hợp lệ. Gốc: epdfont chưa load thành công (glue `epdfont_emulator_set_path`/`epdfont_open` trong sim, hay file `.ef` sai kích cỡ — harness target 480×800, chưa khớp Plus 684×1216). **Next: trace `epdfont_open` kết quả + kiểm tra glue font trong sim có wire `epdfont_emulator_set_path` thật không (main_ebook.c chỉ set path, chưa rõ ai gọi).**
+## 11. Next Actions (cập nhật 2026-10-28)
 
-## 11. Next Actions (cập nhật 2026-10-28, thay thế §10)
-
-1. **T1 (revise):** CHẠY được `ebook_sim` harness trên macOS (đang build) → proof native-LVGL khả thi. Sau đó viết `sim/build.sh` chuẩn hóa + thêm panel Plus 684×1216.
-2. **T2:** verify boot không treo ở `board.StartNetwork` (stub wifi); gọi `Application::GetInstance().Start()` trong sim.
-3. **T3:** EPD renderer 684×1216 (đổi panel từ harness 480×800).
-4. **B2 (fw baseline):** escalate user — cần approve sửa `main/idf_component.yml` (thêm 2 managed components) để `idf.py build` pass.
-5. REA phân tích `RickyOS-Plus-1.2.9-full.bin` (song song, mục 7).
+- [x] **T1 (revise):** CHẠY được `ebook_sim` trên macOS. ✅ XONG.
+- [ ] **T3:** retarget panel 684×1216 (đổi `EPD_HOR_RES/EPD_VER_RES` trong `book_reader_emulator.h` + font Plus).
+- [ ] **T2:** verify `Application::Start` không treo ở `board.StartNetwork` (stub wifi).
+- **Decision 2 (chờ user):** build fw thật (baseline, acceptance T1 #2) fail vì thiếu managed components `78__uart-uhci` + `espressif__iot_eth` (không có trong `main/idf_component.yml` upstream; GitHub upstream 404 với `78__uart-uhci`). Cần user: (a) chỉ nguồn đúng để fetch 2 component (đụng vendor), hay (b) chấp nhận "baseline" = harness native + ghi nhận fw build upstream thiếu dep.
+- REA phân tích `RickyOS-Plus-1.2.9-full.bin` (mục 7).
 
 ---
 

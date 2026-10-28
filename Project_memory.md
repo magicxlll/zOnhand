@@ -44,8 +44,12 @@ Mục tiêu (chốt 2026-10-28, sau phỏng vấn intent):
 - [x] **Spec/plan/tasks + skills + rules + ADR + ref scans** (docs/, .claude/, README, file này) — đã commit+push lần đầu lên `magicxlll/zOnhand` (commit aeb2467)
 - [x] **ESP-IDF v6.1 install ở `~/esp/esp-idf`** (Python 3.14 env, target `esp32s31` được hỗ trợ chính thức — B4 hạ cấp). BUILD FW THẬT fail: thiếu managed components `78__uart-uhci`, `espressif__iot_eth` (không có trong `main/idf_component.yml`) → **chờ user decide** (thêm dep + vendor file, hay chấp nhận baseline = harness native).
 - [x] **T1 de-risk: harness native `ebook_sim` build + CHẠY được trên macOS** (SDL2 window, LVGL init, đọc .ebook) sau 5 vá trong `sim/` (chi tiết `docs/spec-phase-1.md` §10b Phát hiện #4).
-- [ ] **Debug crash SIGSEGV**: `lv_font_get_line_height(NULL)` trong `BuildScreen` (font epdfont chưa ready) — next action đầu tiên.
+- [x] **T1 (revise) XONG:** harness native `ebook_sim` build + CHẠY được trên macOS (SDL2, LVGL init, đọc .ebook 1 chapter, chạy >7s không crash). Vá 5 chỗ trong `sim/` (chi tiết `docs/spec-phase-1.md` §10b Phát hiện #4). Crash SIGSEGV đã fix (root cause: font `.ef` là symlink hỏng upstream → sửa symlink).
+- [x] **`sim/run.sh`** launcher end-to-end: `cd sim && ./run.sh` (build + gen sample .ebook + chạy, không cần env).
+- [ ] **T3 (next):** retarget panel 480×800 → 684×1216 (đổi `EPD_HOR_RES/EPD_VER_RES` trong `book_reader_emulator.h` + dùng font Plus).
+- [ ] **T2:** verify `Application::Start` không treo ở `board.StartNetwork` (stub wifi) trước khi wire boot thật.
 - [ ] REA phân tích `RickyOS-Plus-1.2.9-full.bin` → danh sách tính năng (đề xuất, user review)
+- [ ] **Decision 2 (chờ user):** build fw thật fail — thiếu managed components `78__uart-uhci` + `espressif__iot_eth` (không có trong `main/idf_component.yml` upstream; GitHub upstream 404 với uart-uhci). Chờ user: (a) chỉ nguồn fetch (đụng vendor), hay (b) chấp nhận baseline = harness native.
 
 ## 5. Blockers & Open Questions
 
