@@ -58,6 +58,17 @@ Mục tiêu (chốt 2026-10-28, sau phỏng vấn intent):
 - [x] **Hardware Shim — Battery Gauge & RTC (T6 subset):** `sim/shim/hardware/power_rtc/` mô phỏng BQ27220 Fuel Gauge + PCF8563 RTC + MetalioRtc HAL + MetalioPeriph_StartSystemMonitor. Link trực tiếp với file gốc `vendor/cloudzao/main/boards/metalio-e-ink4-plus/periph/metalio_rtc.cc` và `metalio_sys_mon.cc`. Đã verify PASS 100% qua `test_power_rtc` (default 70% 3850mV discharging, dynamic state update 92% 4180mV charging, host RTC time reading, custom time injection, system monitor background task logging CPU/RAM/Battery metrics).
 - [x] **Interactive Emulator Integration (T2' + NVS + HW Keys + Top Status Bar + Standby Mode):** tích hợp toàn diện NVS persistence, physical keys mapping (P/p: Standby toggle, B/b: Home, VOL+/VOL- navigation & page turn), top status bar (pin BQ27220, đồng hồ PCF8563, tên màn hình), và màn hình chờ Standby (wallpaper e-paper, đồng hồ lớn, thông số pin, wake on any key). Đã verify PASS 100% 7 bước qua `test_t2_shell` (commit `ca9fbe9`).
 - [x] **Phase 1 Master Verification Suite (`sim/test_phase1.sh`):** bộ kiểm thử tự động một lệnh chạy qua cả 5 module: Interactive Emulator -> TCA9555 & Keys -> BQ27220 & RTC -> Micro-unit Shims -> Firmware Boot `Application::Start()`. PASS 100% Green (commit `f0f3c2a`).
+- [x] **dpReader31 Native macOS Simulator (`sim/dpReader-sim/`):**
+  - Clone repo firmware chính thức hoạt động trên máy thật: `https://github.com/dephia31/dpReader31.git` vào `vendor/dpReader31/` (READ-ONLY, không sửa bất kỳ dòng code nào trong vendor).
+  - Hoàn thiện trình giả lập native macOS arm64 (`sim/dpReader-sim`):
+    - Đồ họa: EPDiy 4bpp Grayscale framebuffer 684×1216, cửa sổ SDL2 800×1216 tích hợp thanh bezel 4 phím cứng Metalio (POWER, VOL+, VOL-, AI).
+    - Cảm ứng: I2C CST836U chạm & vuốt mượt mà.
+    - Lưu trữ: VFS hooking trong suốt chuyển hướng `/sdcard/...` và `/flash/...` sang `./storage/`.
+    - Phông chữ & Assets: Assembly arm64 embedding nhúng `builtin.ttf` hỗ trợ tiếng Việt đầy đủ (`v1.1.6-vn`).
+    - NVS Shim: Key-value store hỗ trợ đầy đủ iterators (`nvs_entry_find`) phục vụ quét sách và lưu tiến độ đọc.
+    - Thread-safety: Main thread guard trong `vTaskDelay` loại bỏ hoàn toàn lỗi crash macOS Cocoa `nextEventMatchingMask`.
+  - Đã kiểm tra tự động và thủ công PASS 100%: 4 tab chính (Trang chủ, Kệ sách, Tệp tin, Cài đặt), mở sách (sample.txt, epub), căn lề layout trang, lật trang phím cứng VOL-, phím tắt AI & POWER.
+  - Launcher click đúp chạy ngay: `Chay_dpReader.command`, `Mo_May_Ao.command`, `sim/run.sh`.
 - [ ] **Chờ user review:** danh sách tính năng RickyOS trong `docs/feature-list-recommended.md` (quyết Phase 2 scope).
 
 ### Decision (user chốt 2026-10-29, bản đầy đủ)
@@ -89,7 +100,9 @@ Mục tiêu (chốt 2026-10-28, sau phỏng vấn intent):
 - `.claude/skills/` + `.claude/rules/` — skill + rules dự án
 - `Project_memory.md` — file này (repo root)
 - `vendor/cloudzao/` — source fw (READ-ONLY; HEAD pin `2f55cb1`; gitignored khỏi backup repo)
+- `vendor/dpReader31/` — firmware Metalio E-Ink 4 Plus Tiếng Việt v1.1.6-vn (READ-ONLY; gitignored)
 - `firmware-reference/` — `RickyOS-Plus-1.2.9-full.bin` + output REA
+- `sim/dpReader-sim/` — native simulator chạy dpReader31 (EPD 684×1216, CST836U, phím Metalio)
 - `sim/ebook-emulator/` — harness native (copy từ `vendor/.../tools/ebook/emulator/`, `lvgl/` = symlink)
-- `sim/run.sh` — launcher; `sim/sample/` — .ebook mẫu
-- `Run_Simulator.command` / `Mo_May_Ao.command` — launcher click đúp chạy ngay từ Finder macOS
+- `sim/run.sh` — launcher chạy sim (mặc định dpReader31, `--legacy` chạy ebook-emulator)
+- `Chay_dpReader.command` / `Mo_May_Ao.command` — launcher click đúp chạy ngay từ Finder macOS

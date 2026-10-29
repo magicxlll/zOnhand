@@ -15,5 +15,12 @@ sim/build/
 sim/ebook-emulator/build*/
 sim/ebook-emulator/lvgl
 sim/shim/*/build/
+sim/dpReader-sim/build/
+sim/dpReader-sim/dpReader_sim
+sim/dpReader-sim/screenshot_*.bmp
+sim/dpReader-sim/screenshot_*.png
+sim/dpReader-sim/storage/sdcard/.metalio_s31/
+sim/dpReader-sim/storage/sdcard/.readpico/
+sim/dpReader-sim/storage/nvs_storage.json
 *.pos
 .DS_Store

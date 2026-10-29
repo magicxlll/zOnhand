@@ -1,0 +1,46 @@
+# zOnhand Sample Book
+
+Chào mừng bạn đến với zOnhand — máy ảo mô phỏng Metalio E-Ink 4 Plus trên macOS.
+Chương trình sử dụng core đọc sách thật của CloudZao kết hợp với shim phần cứng.
+
+## Chương 1: Giới thiệu hệ thống
+
+Hệ thống chạy trên kiến trúc native LVGL v9.5 và SDL2.
+Độ phân giải hiển thị chuẩn là 684 x 1216 (portrait), tương ứng với màn hình E-Paper 4.7 inch ED047TC2.
+Thanh điều khiển cảm ứng bên phải (Virtual-key strip) mô phỏng chính xác vùng out-of-band cảm ứng FT6336U với 3 nút HOME, PREV, NEXT.
+
+Hệ thống phím bấm điều hướng:
+- Phím J hoặc Mũi tên xuống: Lật sang trang tiếp theo (Next Page)
+- Phím K hoặc Mũi tên lên: Lật về trang trước đó (Previous Page)
+- Phím H: Quay về trang đầu tiên hoặc về màn hình Home
+- Phím S: Mở menu cài đặt kích thước phông chữ (Settings)
+- Phím ESC hoặc Q: Quay về màn hình danh sách sách (Home)
+
+## Chương 2: Tính năng và kiến trúc
+
+Kiến trúc simulator được thiết kế theo hướng D1 (rail architecture), tách biệt rõ ràng giữa core đọc sách và các tầng mô phỏng phần cứng.
+Mọi linh kiện phần cứng bao gồm:
+1. Màn hình e-paper ED047TC2 với bộ điều khiển TPS65185 PMIC
+2. Chip cảm ứng FT6336U qua giao tiếp I2C
+3. Bộ mở rộng IO TCA9555
+4. Nguồn và cảm biến pin BQ27220
+5. Đồng hồ thời gian thực RTC PCF8563
+6. Bộ nhớ Flash NVS lưu cấu hình
+
+## Chương 3: Thử nghiệm đổi kích thước chữ
+
+Trong menu Settings, bạn có thể lựa chọn các cỡ chữ khác nhau:
+- 20 pt: Chữ nhỏ, hiển thị nhiều nội dung nhất
+- 22 pt: Kích thước tinh gọn
+- 24 pt: Cỡ chữ tiêu chuẩn
+- 25 pt: Cỡ chữ mặc định của hệ thống
+- 28 pt: Cỡ chữ vừa
+- 30 pt: Cỡ chữ lớn, đọc rất rõ ràng
+- 34 pt: Cỡ chữ phóng to
+- 40 pt: Cỡ chữ tối đa
+
+Sau khi đổi sang cỡ 30 pt, toàn bộ tài liệu sẽ được tính toán lại số trang tự động và bố cục lại chữ một cách chuẩn xác.
+
+## Lời kết
+
+Chúc bạn có những trải nghiệm tuyệt vời với zOnhand!
