@@ -54,6 +54,7 @@ Mục tiêu (chốt 2026-10-28, sau phỏng vấn intent):
   - [x] `sim/shim/nvs/` — `nvs_*` (get/set str, i32, u8, blob, erase, commit, flash_erase) → file-based persistent storage (`$ZONHAND_NVS_DIR` hoặc `~/.zOnhand_sim/nvs/*.dat`). Đã test PASS 100% qua `test_nvs_shim` (commit `b4f7d34`).
   - [x] `sim/shim/wifi_audio_ota_noop/` — `board.StartNetwork()` no-op, audio no-op, OTA skip, `esp_wifi` / `esp_netif` / `esp_random` / `esp_chip_info` / `esp_app_desc` stubs. Đã test PASS 100% qua `test_wifi_audio_ota_shim` (commit `657f76a`).
   - [x] Boot `Application::Start()` thật (verify log boot khớp source `vendor/cloudzao/main/application.cc:1331`) qua `sim/shim/application_boot/test_boot_application` PASS 100% (boot flow, NVS, status bar, MainEventLoop thread scheduling, esp_timer periodic clock ticks). Không sửa 1 dòng code nào trong `vendor/`.
+- [x] **Hardware Shim — TCA9555 & Keys (T4):** `sim/shim/hardware/tca9555_keys/` mô phỏng TCA9555 IO expander (I2C 0x20) + BOOT button (GPIO61, IRQ). Link trực tiếp với code gốc `vendor/cloudzao/main/boards/metalio-e-ink4-plus/input/metalio_keys.cc`. Đã verify PASS 100% qua `test_tca9555_keys` (VOL+ P10 down/up edge, VOL- P11 down/up edge, POWER P17 short click, POWER long press >=3000ms triggering shutdown pulse on P13, BOOT GPIO61 interrupt, vibration motor control, pulse train count).
 - [ ] **Chờ user review:** danh sách tính năng RickyOS trong `docs/feature-list-recommended.md` (quyết Phase 2 scope).
 
 ### Decision (user chốt 2026-10-29, bản đầy đủ)

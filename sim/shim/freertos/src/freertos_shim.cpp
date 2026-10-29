@@ -27,6 +27,9 @@ struct SimTask {
     std::thread thread;
     std::atomic<bool> is_running{false};
     std::atomic<bool> detached{false};
+    std::mutex notify_mtx;
+    std::condition_variable notify_cv;
+    uint32_t notify_val = 0;
 };
 
 struct SimEventGroup {
@@ -160,6 +163,55 @@ UBaseType_t uxTaskPriorityGet(const TaskHandle_t /*xTask*/) {
 }
 
 void vTaskPrioritySet(TaskHandle_t /*xTask*/, UBaseType_t /*uxNewPriority*/) {
+}
+
+void vTaskNotifyGiveFromISR(TaskHandle_t xTaskToNotify, BaseType_t *pxHigherPriorityTaskWoken) {
+    if (xTaskToNotify == nullptr) return;
+    auto* task = static_cast<SimTask*>(xTaskToNotify);
+    {
+        std::lock_guard<std::mutex> lock(task->notify_mtx);
+        task->notify_val++;
+    }
+    task->notify_cv.notify_one();
+    if (pxHigherPriorityTaskWoken != nullptr) {
+        *pxHigherPriorityTaskWoken = pdFALSE;
+    }
+}
+
+BaseType_t xTaskNotifyGive(TaskHandle_t xTaskToNotify) {
+    if (xTaskToNotify == nullptr) return pdFAIL;
+    auto* task = static_cast<SimTask*>(xTaskToNotify);
+    {
+        std::lock_guard<std::mutex> lock(task->notify_mtx);
+        task->notify_val++;
+    }
+    task->notify_cv.notify_one();
+    return pdPASS;
+}
+
+uint32_t ulTaskNotifyTake(BaseType_t xClearCountOnExit, TickType_t xTicksToWait) {
+    auto* cur = static_cast<SimTask*>(s_current_task);
+    if (cur == nullptr) return 0;
+
+    std::unique_lock<std::mutex> lock(cur->notify_mtx);
+    if (cur->notify_val == 0 && xTicksToWait > 0) {
+        if (xTicksToWait == portMAX_DELAY) {
+            cur->notify_cv.wait(lock, [cur]() { return cur->notify_val > 0; });
+        } else {
+            cur->notify_cv.wait_for(lock, std::chrono::milliseconds(xTicksToWait * portTICK_PERIOD_MS),
+                                    [cur]() { return cur->notify_val > 0; });
+        }
+    }
+
+    uint32_t val = cur->notify_val;
+    if (val > 0) {
+        if (xClearCountOnExit == pdTRUE) {
+            cur->notify_val = 0;
+        } else {
+            cur->notify_val--;
+        }
+    }
+    return val;
 }
 
 // ---------------------------------------------------------------------------

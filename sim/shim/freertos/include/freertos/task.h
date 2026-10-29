@@ -44,6 +44,12 @@ UBaseType_t uxTaskPriorityGet(const TaskHandle_t xTask);
 
 void vTaskPrioritySet(TaskHandle_t xTask, UBaseType_t uxNewPriority);
 
+void vTaskNotifyGiveFromISR(TaskHandle_t xTaskToNotify, BaseType_t *pxHigherPriorityTaskWoken);
+
+uint32_t ulTaskNotifyTake(BaseType_t xClearCountOnExit, TickType_t xTicksToWait);
+
+BaseType_t xTaskNotifyGive(TaskHandle_t xTaskToNotify);
+
 #ifdef __cplusplus
 }
 #endif

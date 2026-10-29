@@ -69,6 +69,14 @@ typedef uint32_t EventBits_t;
 #define BIT31 (1UL << 31)
 #endif
 
+#ifndef IRAM_ATTR
+#define IRAM_ATTR
+#endif
+
+#ifndef portYIELD_FROM_ISR
+#define portYIELD_FROM_ISR() do {} while (0)
+#endif
+
 typedef void (*TaskFunction_t)(void *);
 
 #ifdef __cplusplus

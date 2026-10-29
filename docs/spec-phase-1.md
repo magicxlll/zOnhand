@@ -375,6 +375,7 @@ Harness `sim/ebook-emulator/` (copy từ `vendor/.../tools/ebook/emulator/`, sym
 - [x] **T5 XONG (commit 71fc056):** virtual-key strip — 3 vạch HOME/PREV/NEXT (bezel 44px bên phải, đúng vị trí out-of-band FT6336) + phím H/J/K. Reader giữ đúng 684×1216, display 728×1216 (panel + strip). `run.sh` chạy end-to-end clean.
 - [x] **T2' XONG:** host app shell (Home thư viện sách + Settings chọn 字号 20-40pt) trên BookSession thật. Navigation: Enter mở sách, J/K lật trang, H về trang 0 / Home, Settings đổi font 25->30 render to hơn.
 - [x] **T2-full XONG (theo D3, chuỗi shim 1 commit/shim):** chuỗi shim FreeRTOS (`xTaskCreate`→`std::thread`, `esp_timer`), NVS (file-based persistent), wifi/audio/OTA no-op để boot `Application::Start()` (vendor/cloudzao/main/application.cc:1331) chạy qua 100% với log boot chuẩn xác, không sửa 1 dòng code trong vendor/.
+- [x] **T4 (Hardware Shim — TCA9555 & Keys):** mô phỏng hoàn chỉnh TCA9555 IO expander (I2C 0x20) + BOOT button (GPIO61, IRQ BOTHEDGE) trong `sim/shim/hardware/tca9555_keys/`, link trực tiếp với file gốc `vendor/cloudzao/main/boards/metalio-e-ink4-plus/input/metalio_keys.cc`. Đã verify PASS 100% qua `test_tca9555_keys` (VOL+ P10 down/up edge, VOL- P11 down/up edge, POWER P17 short click, POWER long press >=3000ms triggering shutdown pulse on P13, BOOT GPIO61 interrupt, vibration motor control, pulse train count).
 - [x] **REA phân tích `RickyOS-Plus-1.2.9-full.bin` (mục 7):** đã scan xong, `docs/feature-list-recommended.md` đã commit (795d606), chờ user review tính năng Phase 2.
 
 ---

@@ -9,6 +9,7 @@ include_directories(include)
 add_library(freertos_shim STATIC
     src/freertos_shim.cpp
     src/esp_timer_shim.cpp
+    src/gpio_shim.cpp
 )
 
 target_include_directories(freertos_shim PUBLIC
