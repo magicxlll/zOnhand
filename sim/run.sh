@@ -35,5 +35,6 @@ if [ ! -f "$BOOK" ]; then
 fi
 
 echo ">> running: $EMU/build-ebook/bin/ebook_sim  (SDL window will open)"
+# -W/-H omitted: default is EPD_SIM_VIEW_W x EPD_VER_RES (728x1216 = panel + vstrip).
 exec env EBOOK_EPDFONT="$FONT" EBOOK_PATH="$BOOK" \
-  "$EMU/build-ebook/bin/ebook_sim" -b sdl -W 684 -H 1216
+  "$EMU/build-ebook/bin/ebook_sim" -b sdl

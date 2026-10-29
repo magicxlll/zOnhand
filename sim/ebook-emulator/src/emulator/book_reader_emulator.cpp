@@ -1,6 +1,7 @@
 #include "book_reader_emulator.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <memory>
@@ -250,6 +251,67 @@ void OnContentClicked(lv_event_t* e) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// T5: virtual-key strip (device right bezel: 3 out-of-band marks HOME/PREV/NEXT,
+// FT6336 Y=1600 X=100/200/300). Rendered as an orange mark column OUTSIDE the
+// 684x1216 e-paper region; the reader keeps its true panel size.
+// ---------------------------------------------------------------------------
+static constexpr int VK_HOME = 0, VK_PREV = 1, VK_NEXT = 2;
+
+void OnVkClick(lv_event_t* e) {
+    const int which =
+        static_cast<int>(reinterpret_cast<std::intptr_t>(lv_event_get_user_data(e)));
+    if (which == VK_HOME) {
+        book_reader_vk_home();
+    } else if (which == VK_PREV) {
+        book_reader_prev_page();
+    } else if (which == VK_NEXT) {
+        book_reader_next_page();
+    }
+}
+
+void BuildVStrip(lv_obj_t* root) {
+    // Dark bezel column, right of the e-paper panel.
+    lv_obj_t* bezel = lv_obj_create(root);
+    lv_obj_remove_style_all(bezel);
+    lv_obj_set_size(bezel, VSTRIP_W, EPD_VER_RES);
+    lv_obj_align(bezel, LV_ALIGN_TOP_LEFT, EPD_HOR_RES, 0);
+    lv_obj_set_style_bg_color(bezel, lv_color_hex(0x2b2b2b), 0);
+    lv_obj_set_style_bg_opa(bezel, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(bezel, 0, 0);
+    lv_obj_clear_flag(bezel, LV_OBJ_FLAG_CLICKABLE);
+    DisableScroll(bezel);
+
+    struct VkDef {
+        int which;
+        const char* label;  // H/J/K shortcut (see T4 key map)
+        lv_coord_t y_frac4; // vertical slot (quarters of panel height)
+    };
+    const VkDef defs[3] = {
+        {VK_HOME, "HOME\nH", 1},
+        {VK_PREV, "PREV\nK", 2},
+        {VK_NEXT, "NEXT\nJ", 3},
+    };
+    for (const auto& d : defs) {
+        lv_obj_t* mark = lv_obj_create(root);
+        lv_obj_remove_style_all(mark);
+        lv_obj_set_size(mark, VSTRIP_W - 12, 88);
+        lv_obj_align(mark, LV_ALIGN_TOP_LEFT, EPD_HOR_RES + 6, EPD_VER_RES * d.y_frac4 / 4 - 44);
+        lv_obj_set_style_radius(mark, 8, 0);
+        lv_obj_set_style_bg_color(mark, lv_color_hex(0xF0A500), 0);  // device orange
+        lv_obj_set_style_bg_opa(mark, LV_OPA_COVER, 0);
+        lv_obj_add_flag(mark, LV_OBJ_FLAG_CLICKABLE);
+        DisableScroll(mark);
+        lv_obj_t* t = lv_label_create(mark);
+        lv_label_set_text(t, d.label);
+        lv_obj_center(t);
+        lv_obj_set_style_text_color(t, lv_color_hex(0x111111), 0);
+        lv_obj_set_style_text_align(t, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_add_event_cb(mark, OnVkClick, LV_EVENT_CLICKED,
+                           reinterpret_cast<void*>(static_cast<std::intptr_t>(d.which)));
+    }
+}
+
 void BuildScreen() {
     auto& ui = Ui();
     if (ui.scr != nullptr && lv_obj_is_valid(ui.scr)) {
@@ -267,7 +329,7 @@ void BuildScreen() {
     lv_obj_set_size(status, EPD_HOR_RES, ui.status_h);
     lv_obj_set_style_bg_opa(status, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(status, 0, 0);
-    lv_obj_align(status, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_align(status, LV_ALIGN_TOP_LEFT, 0, 0);
     DisableScroll(status);
 
     const lv_coord_t body_h = EPD_VER_RES - ui.status_h - kFooterH;
@@ -275,7 +337,9 @@ void BuildScreen() {
     lv_obj_t* body = lv_obj_create(ui.scr);
     lv_obj_remove_style_all(body);
     lv_obj_set_size(body, EPD_HOR_RES, body_h);
-    lv_obj_align(body, LV_ALIGN_TOP_MID, 0, ui.status_h);
+    // Left-anchor to the e-paper panel (x=0..EPD_HOR_RES); the vstrip occupies
+    // x=EPD_HOR_RES.. so the reader stays panel-centered, not display-centered.
+    lv_obj_align(body, LV_ALIGN_TOP_LEFT, 0, ui.status_h);
     lv_obj_set_style_pad_hor(body, page_images ? 0 : kListPad, 0);
     lv_obj_set_style_bg_opa(body, LV_OPA_TRANSP, 0);
     DisableScroll(body);
@@ -288,9 +352,10 @@ void BuildScreen() {
     lv_obj_set_style_text_font(ui.footer, ListFont(), 0);
     lv_obj_set_style_text_color(ui.footer, lv_color_black(), 0);
     lv_label_set_long_mode(ui.footer, LV_LABEL_LONG_CLIP);
-    lv_obj_align(ui.footer, LV_ALIGN_BOTTOM_MID, 0, -4);
+    lv_obj_align(ui.footer, LV_ALIGN_BOTTOM_LEFT, 8, -4);
     DisableScroll(ui.footer);
 
+    BuildVStrip(ui.scr);
     lv_screen_load(ui.scr);
 }
 
@@ -317,7 +382,9 @@ void ShowIdleScreen() {
     }
     lv_obj_set_style_text_color(lbl, lv_color_hex(0x111111), 0);
     lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_center(lbl);
+    // Center on the e-paper panel only (not the full display incl. vstrip).
+    lv_obj_align(lbl, LV_ALIGN_TOP_MID, -VSTRIP_W / 2, EPD_VER_RES / 3);
+    BuildVStrip(ui.scr);
     lv_screen_load(ui.scr);
 }
 
@@ -407,11 +474,16 @@ void book_reader_input_init(void) {
                     return;
                 }
                 const uint32_t key = lv_indev_get_key(indev);
-                // Map to page turn. UP=prev, DOWN=next (reading flow).
-                if (key == LV_KEY_LEFT || key == LV_KEY_UP || key == LV_KEY_PREV || key == 'a') {
+                // Page-turn keys (reading flow; VOL+/VOL- double-duty on real
+                // device = menu-only, out of reader scope).
+                if (key == LV_KEY_LEFT || key == LV_KEY_UP || key == LV_KEY_PREV || key == 'a' || key == 'k') {
                     book_reader_prev_page();
-                } else if (key == LV_KEY_RIGHT || key == LV_KEY_DOWN || key == LV_KEY_NEXT || key == 'd') {
+                } else if (key == LV_KEY_RIGHT || key == LV_KEY_DOWN || key == LV_KEY_NEXT || key == 'd' || key == 'j') {
                     book_reader_next_page();
+                }
+                // T5 virtual keys (match the on-screen strip labels).
+                else if (key == 'h') {
+                    book_reader_vk_home();
                 }
             },
             LV_EVENT_ALL,
@@ -504,6 +576,17 @@ void book_reader_next_page(void) {
     if (ui.session && ui.session->NextPage()) {
         RenderPage();
     }
+}
+
+void book_reader_vk_home(void) {
+    auto& ui = Ui();
+    // Sim semantic (no app shell in Phase 1): "home" = back to first page of
+    // the open book. The device's vk_home long-press "one-tap back to system
+    // home screen" is T2+ (needs Application::Start / screen stack).
+    if (ui.session && ui.session->IsOpen() && !ui.session->GoToPage(0)) {
+        return;
+    }
+    RenderPage();
 }
 
 void book_reader_prev_page(void) {

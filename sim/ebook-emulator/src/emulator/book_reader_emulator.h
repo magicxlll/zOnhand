@@ -10,6 +10,12 @@ extern "C" {
 #define EPD_HOR_RES 684
 #define EPD_VER_RES 1216
 
+/** T5: virtual-key strip — the 3 out-of-band touch marks on the device's right
+ *  bezel (FT6336 Y=1600, X=100/200/300 -> vk_home/vk_prev/vk_next). Rendered
+ *  OUTSIDE the e-paper region so the reader screen keeps its true 684x1216. */
+#define VSTRIP_W 44
+#define EPD_SIM_VIEW_W (EPD_HOR_RES + VSTRIP_W)
+
 void book_reader_init(void);
 /* Register host input (SDL mouse pointer + keyboard) so the simulated
  * device's physical/virtual keys map onto page actions. Call after
@@ -21,6 +27,10 @@ int book_reader_open_ebook_path(const char* path);
 int book_reader_open_ebook_mem(const uint8_t* data, size_t len);
 void book_reader_next_page(void);
 void book_reader_prev_page(void);
+/** vk_home (sim semantic): back to the book's first page. The real device's
+ *  vk_home "one-tap back to system home" needs the app shell (T2+); inside the
+ *  reader the closest host behavior is page 0. */
+void book_reader_vk_home(void);
 void book_reader_go_toc(int index);
 int book_reader_toc_count(void);
 const char* book_reader_toc_title(int index);

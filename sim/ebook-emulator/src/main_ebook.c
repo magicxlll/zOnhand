@@ -21,7 +21,8 @@ static void configure_simulator(int argc, char** argv) {
     selected_backend = NULL;
     driver_backends_register();
 
-    settings.window_width = EPD_HOR_RES;
+    // Display = e-paper panel + virtual-key strip (T5): 684+44 = 728 wide.
+    settings.window_width = EPD_SIM_VIEW_W;
     settings.window_height = EPD_VER_RES;
 
     while ((opt = getopt(argc, argv, "b:W:H:h")) != -1) {

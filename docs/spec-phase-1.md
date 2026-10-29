@@ -365,12 +365,15 @@ Harness `sim/ebook-emulator/` (copy từ `vendor/.../tools/ebook/emulator/`, sym
 
 **Run:** `cd sim && ./run.sh`. **Panel hiện tại: 480×800 (E-Ink4)** — T3 sẽ retarget 684×1216 (Plus).
 
-## 11. Next Actions (cập nhật 2026-10-28)
+## 11. Next Actions (cập nhật 2026-10-29)
 
 - [x] **T1 (revise):** CHẠY được `ebook_sim` trên macOS. ✅ XONG.
-- [ ] **T3:** retarget panel 684×1216 (đổi `EPD_HOR_RES/EPD_VER_RES` trong `book_reader_emulator.h` + font Plus).
-- [ ] **T2:** verify `Application::Start` không treo ở `board.StartNetwork` (stub wifi).
-- **Decision 2 (chờ user):** build fw thật (baseline, acceptance T1 #2) fail vì thiếu managed components `78__uart-uhci` + `espressif__iot_eth` (không có trong `main/idf_component.yml` upstream; GitHub upstream 404 với `78__uart-uhci`). Cần user: (a) chỉ nguồn đúng để fetch 2 component (đụng vendor), hay (b) chấp nhận "baseline" = harness native + ghi nhận fw build upstream thiếu dep.
+- [x] **T3:** retarget panel 684×1216 (commit cbe38a6). ✅ XONG.
+- [x] **T4:** input shim — register mouse + keyboard indev (LVGL v9.5 `lv_sdl_mouse_create`/`lv_sdl_keyboard_create`), map LEFT/UP/PREV/a → PrevPage, RIGHT/DOWN/NEXT/d → NextPage (commit 7e10f53). ✅ XONG (đã chạy thật, không crash).
+- [ ] **Decision 1 (user chốt 2026-10-29):** "Bo qua, chạy VM trước" — build fw thật (thiếu `78__uart-uhci` + `espressif__iot_eth`) lùi sang sau. Nếu sau này build thật: `78/uart-uhci` có trên GitHub (https://github.com/78/uart-uhci); `espressif/iot_eth` KHÔNG có GitHub công khai (404) → cần user chỉ nguồn. Ghi chú: repo upstream gitignore `managed_components/` + không ship `dependencies.lock` khai báo đủ → clone sạch thiếu 2 component này.
+- [ ] **Decision 2 (user chốt 2026-10-29):** "Cấu trúc VM = (a)+rail [khuyến nghị]" — mở rộng harness ebook-emulator (demo nhanh), các shim viết theo kiến trúc host-shim để sau này đóng thành `sim/` sạch. T4 đúng là bước đầu của "rail" (shim input module, không hack code reader).
+- [ ] **T5 (next):** virtual-key strip (3 vạch HOME/PREV/NEXT qua out-of-band FT6336 Y=1600/X=100,200,300) — UI bên cạnh e-paper trong SDL window + phím H/J/K.
+- [ ] **T2 (sau):** wire `Application::Start` (boot fw thật) — cần stub wifi (B5), verify không treo ở `board.StartNetwork`.
 - REA phân tích `RickyOS-Plus-1.2.9-full.bin` (mục 7).
 
 ---

@@ -46,8 +46,11 @@ Mục tiêu (chốt 2026-10-28, sau phỏng vấn intent):
 - [x] **T1 de-risk: harness native `ebook_sim` build + CHẠY được trên macOS** (SDL2 window, LVGL init, đọc .ebook) sau 5 vá trong `sim/` (chi tiết `docs/spec-phase-1.md` §10b Phát hiện #4).
 - [x] **T1 (revise) XONG:** harness native `ebook_sim` build + CHẠY được trên macOS (SDL2, LVGL init, đọc .ebook 1 chapter, chạy >7s không crash). Vá 5 chỗ trong `sim/` (chi tiết `docs/spec-phase-1.md` §10b Phát hiện #4). Crash SIGSEGV đã fix (root cause: font `.ef` là symlink hỏng upstream → sửa symlink).
 - [x] **`sim/run.sh`** launcher end-to-end: `cd sim && ./run.sh` (build + gen sample .ebook + chạy, không cần env).
-- [ ] **T3 (next, đang làm):** retarget panel 480×800 → 684×1216 (đổi `EPD_HOR_RES/EPD_VER_RES` trong `book_reader_emulator.h` + dùng font Plus).
-- [ ] **T2:** verify `Application::Start` không treo ở `board.StartNetwork` (stub wifi) trước khi wire boot thật.
+- [x] **T3 XONG (commit cbe38a6):** panel 684×1216 (E-Ink4 Plus). `EPD_HOR_RES/EPD_VER_RES` đổi trong `book_reader_emulator.h`, SDL window + reader render đúng. Chạy clean.
+- [x] **T4 XONG (commit 7e10f53):** input shim — register `lv_sdl_mouse_create` (pointer) + `lv_sdl_keyboard_create` (keypad) indevs; map LEFT/UP/PREV/`a`→PrevPage, RIGHT/DOWN/NEXT/`d`→NextPage (đọc sách = page-turn là action chủ đạo). Sim render + tương tác được, không crash.
+- [ ] **T5 (next):** virtual-key strip (3 vạch HOME/PREV/NEXT, out-of-band FT6336 Y=1600/X=100,200,300) — UI cạnh e-paper trong SDL + phím H/J/K.
+- [ ] **T2 (milestone chính):** wire `Application::Start` (boot fw thật: main UI 3×3 grid + settings) — cần stub wifi (B5), verify không treo ở `board.StartNetwork`. Lớn hơn T3/T4 nhiều (kéo theo nhiều ESP-IDF).
+- [ ] REA phân tích `RickyOS-Plus-1.2.9-full.bin` → danh sách tính năng (đề xuất, user review).
 - [ ] REA phân tích `RickyOS-Plus-1.2.9-full.bin` → danh sách tính năng (đề xuất, user review)
 
 ### Decision (user chốt 2026-10-29)
