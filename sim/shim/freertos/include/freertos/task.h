@@ -50,6 +50,11 @@ uint32_t ulTaskNotifyTake(BaseType_t xClearCountOnExit, TickType_t xTicksToWait)
 
 BaseType_t xTaskNotifyGive(TaskHandle_t xTaskToNotify);
 
+static inline configRUN_TIME_COUNTER_TYPE ulTaskGetIdleRunTimeCounterForCore(BaseType_t xCoreID) {
+    (void)xCoreID;
+    return 0;
+}
+
 #ifdef __cplusplus
 }
 #endif

@@ -28,6 +28,12 @@ typedef uint32_t EventBits_t;
 #define pdMS_TO_TICKS(ms) ((TickType_t)(ms))
 #define portMAX_DELAY ((TickType_t)0xFFFFFFFFUL)
 
+#ifndef portNUM_PROCESSORS
+#define portNUM_PROCESSORS 2
+#endif
+
+typedef uint32_t configRUN_TIME_COUNTER_TYPE;
+
 #define configSTACK_DEPTH_TYPE uint32_t
 #define tskNO_AFFINITY ((BaseType_t)-1)
 
