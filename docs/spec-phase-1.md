@@ -372,7 +372,7 @@ Harness `sim/ebook-emulator/` (copy từ `vendor/.../tools/ebook/emulator/`, sym
 - [x] **T4:** input shim — register mouse + keyboard indev (LVGL v9.5 `lv_sdl_mouse_create`/`lv_sdl_keyboard_create`), map LEFT/UP/PREV/a → PrevPage, RIGHT/DOWN/NEXT/d → NextPage (commit 7e10f53). ✅ XONG (đã chạy thật, không crash).
 - [ ] **Decision 1 (user chốt 2026-10-29):** "Bo qua, chạy VM trước" — build fw thật (thiếu `78__uart-uhci` + `espressif__iot_eth`) lùi sang sau. Nếu sau này build thật: `78/uart-uhci` có trên GitHub (https://github.com/78/uart-uhci); `espressif/iot_eth` KHÔNG có GitHub công khai (404) → cần user chỉ nguồn. Ghi chú: repo upstream gitignore `managed_components/` + không ship `dependencies.lock` khai báo đủ → clone sạch thiếu 2 component này.
 - [ ] **Decision 2 (user chốt 2026-10-29):** "Cấu trúc VM = (a)+rail [khuyến nghị]" — mở rộng harness ebook-emulator (demo nhanh), các shim viết theo kiến trúc host-shim để sau này đóng thành `sim/` sạch. T4 đúng là bước đầu của "rail" (shim input module, không hack code reader).
-- [ ] **T5 (next):** virtual-key strip (3 vạch HOME/PREV/NEXT qua out-of-band FT6336 Y=1600/X=100,200,300) — UI bên cạnh e-paper trong SDL window + phím H/J/K.
+- [x] **T5 XONG (commit 71fc056):** virtual-key strip — 3 vạch HOME/PREV/NEXT (bezel 44px bên phải, đúng vị trí out-of-band FT6336) + phím H/J/K. Reader giữ đúng 684×1216, display 728×1216 (panel + strip). `run.sh` chạy end-to-end clean.
 - [ ] **T2 (sau):** wire `Application::Start` (boot fw thật) — cần stub wifi (B5), verify không treo ở `board.StartNetwork`.
 - REA phân tích `RickyOS-Plus-1.2.9-full.bin` (mục 7).
 

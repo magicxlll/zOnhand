@@ -48,7 +48,7 @@ Mục tiêu (chốt 2026-10-28, sau phỏng vấn intent):
 - [x] **`sim/run.sh`** launcher end-to-end: `cd sim && ./run.sh` (build + gen sample .ebook + chạy, không cần env).
 - [x] **T3 XONG (commit cbe38a6):** panel 684×1216 (E-Ink4 Plus). `EPD_HOR_RES/EPD_VER_RES` đổi trong `book_reader_emulator.h`, SDL window + reader render đúng. Chạy clean.
 - [x] **T4 XONG (commit 7e10f53):** input shim — register `lv_sdl_mouse_create` (pointer) + `lv_sdl_keyboard_create` (keypad) indevs; map LEFT/UP/PREV/`a`→PrevPage, RIGHT/DOWN/NEXT/`d`→NextPage (đọc sách = page-turn là action chủ đạo). Sim render + tương tác được, không crash.
-- [ ] **T5 (next):** virtual-key strip (3 vạch HOME/PREV/NEXT, out-of-band FT6336 Y=1600/X=100,200,300) — UI cạnh e-paper trong SDL + phím H/J/K.
+- [x] **T5 XONG (commit 71fc056):** virtual-key strip (3 vạch HOME/PREV/NEXT, đúng vị trí out-of-band FT6336) + phím H/J/K. Reader giữ 684×1216, display 728×1216 (panel+strip).
 - [ ] **T2 (milestone chính):** wire `Application::Start` (boot fw thật: main UI 3×3 grid + settings) — cần stub wifi (B5), verify không treo ở `board.StartNetwork`. Lớn hơn T3/T4 nhiều (kéo theo nhiều ESP-IDF).
 - [ ] REA phân tích `RickyOS-Plus-1.2.9-full.bin` → danh sách tính năng (đề xuất, user review).
 - [ ] REA phân tích `RickyOS-Plus-1.2.9-full.bin` → danh sách tính năng (đề xuất, user review)
