@@ -16,3 +16,4 @@ sim/ebook-emulator/build*/
 sim/ebook-emulator/lvgl
 sim/shim/*/build/
 *.pos
+.DS_Store
