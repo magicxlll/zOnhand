@@ -7,10 +7,13 @@ if(NOT EXISTS "${ESP_MAIN}/reader/book_session.cc")
     message(FATAL_ERROR "ESP_MAIN 无效: ${ESP_MAIN}")
 endif()
 
+set(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
+
 set(EBOOK_INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/esp_compat
     ${CMAKE_CURRENT_SOURCE_DIR}/src/font
     ${CMAKE_CURRENT_SOURCE_DIR}/src/emulator
+    ${REPO_ROOT}/sim/shim/nvs/include
     ${ESP_MAIN}/reader
     ${ESP_MAIN}/boards/common
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -38,6 +41,7 @@ set(EBOOK_FONT_SRC
 set(EBOOK_EMULATOR_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/emulator/book_reader_emulator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/emulator/image_util_emulator.cc
+    ${REPO_ROOT}/sim/shim/nvs/src/nvs_shim.cpp
 )
 
 function(ebook_emulator_target target_name main_src)

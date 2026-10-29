@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <dirent.h>
 #include <memory>
 #include <string>
@@ -18,6 +19,8 @@
 #include "ebook_document.h"
 #include "reader_page_render.h"
 #include "reader_types.h"
+#include "nvs.h"
+#include "nvs_flash.h"
 
 // lv_sdl_mouse_create / lv_sdl_keyboard_create come in via lvgl.h (which pulls
 // in src/drivers/lv_drivers.h). No extra include needed.
@@ -63,7 +66,7 @@ void DisableScroll(lv_obj_t* obj) {
 // NOT touch reader::BookSession (the real CloudZao core). The device's true
 // boot (Application::Start) is T2-full.
 // ---------------------------------------------------------------------------
-enum class ShellScreen { kHome, kSettings, kReader };
+enum class ShellScreen { kHome, kSettings, kReader, kStandby };
 
 // Available .ef font sizes (matches vendor tools/epdfont/MiSans-Light/).
 constexpr int kFontSizes[] = {20, 22, 24, 25, 28, 30, 34, 40};
@@ -73,8 +76,10 @@ struct ShellState {
     ShellScreen screen = ShellScreen::kHome;
     ShellScreen prev_screen = ShellScreen::kHome;
     int home_sel = 0;
-    int settings_sel = 3;      // which setting row is focused (3 -> 25)
-    int font_size_idx = 3;     // -> kFontSizes[3] = 25 (default, matches shipped .ef)
+    int settings_sel = 3;             // which setting row is focused (3 -> 25)
+    int font_size_idx = 3;            // -> kFontSizes[3] = 25 (default, matches shipped .ef)
+    int refresh_mode = 0;             // 0 = partial (default), 1 = full refresh
+    std::string last_book;            // path of last read book from NVS
     std::vector<std::string> books;   // .ebook/.epub paths
     std::string font_dir;             // dir holding misans_*.ef
 };
@@ -82,6 +87,88 @@ struct ShellState {
 static ShellState& Shell() {
     static ShellState s;
     return s;
+}
+
+static void NvsLoad() {
+    nvs_flash_init();
+    nvs_handle_t h = 0;
+    if (nvs_open("reader", NVS_READONLY, &h) == ESP_OK) {
+        int32_t val = 0;
+        if (nvs_get_i32(h, "font_idx", &val) == ESP_OK && val >= 0 && val < kFontSizeCount) {
+            Shell().font_size_idx = val;
+            Shell().settings_sel = val;
+        }
+        if (nvs_get_i32(h, "refr_mode", &val) == ESP_OK) {
+            Shell().refresh_mode = val;
+        }
+        size_t len = 0;
+        if (nvs_get_str(h, "last_book", nullptr, &len) == ESP_OK && len > 0) {
+            std::vector<char> buf(len);
+            if (nvs_get_str(h, "last_book", buf.data(), &len) == ESP_OK) {
+                Shell().last_book = buf.data();
+            }
+        }
+        nvs_close(h);
+    }
+}
+
+static void NvsSaveFontIdx(int idx) {
+    nvs_handle_t h = 0;
+    if (nvs_open("reader", NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_i32(h, "font_idx", idx);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
+
+static void NvsSaveRefreshMode(int mode) {
+    nvs_handle_t h = 0;
+    if (nvs_open("reader", NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_i32(h, "refr_mode", mode);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
+
+static void NvsSaveLastBook(const std::string& book) {
+    nvs_handle_t h = 0;
+    if (nvs_open("reader", NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_str(h, "last_book", book.c_str());
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
+
+static std::string GetBatteryString() {
+    const char* env = std::getenv("ZONHAND_BATTERY_LEVEL");
+    int lvl = 70;
+    if (env != nullptr) {
+        int v = std::atoi(env);
+        if (v >= 0 && v <= 100) lvl = v;
+    }
+    return std::to_string(lvl) + "% 🔋";
+}
+
+static std::string GetTimeString() {
+    time_t now = ::time(nullptr);
+    struct tm local = {};
+    if (localtime_r(&now, &local) != nullptr) {
+        char buf[16];
+        std::snprintf(buf, sizeof(buf), "%02d:%02d", local.tm_hour, local.tm_min);
+        return buf;
+    }
+    return "12:00";
+}
+
+static std::string GetDateString() {
+    time_t now = ::time(nullptr);
+    struct tm local = {};
+    if (localtime_r(&now, &local) != nullptr) {
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d", local.tm_year + 1900, local.tm_mon + 1, local.tm_mday);
+        return buf;
+    }
+    return "2026-10-29";
 }
 
 static std::string ResolveFontDir() {
@@ -351,8 +438,13 @@ void OnVkClick(lv_event_t* e) {
         static_cast<int>(reinterpret_cast<std::intptr_t>(lv_event_get_user_data(e)));
     auto& sh = Shell();
 
+    if (sh.screen == ShellScreen::kStandby) {
+        book_reader_exit_standby();
+        return;
+    }
+
     if (sh.screen == ShellScreen::kHome) {
-        const int max_sel = static_cast<int>(sh.books.size());
+        const int max_sel = static_cast<int>(sh.books.size()) + 1;
         if (which == VK_PREV) {
             if (sh.home_sel > 0) {
                 sh.home_sel--;
@@ -366,21 +458,24 @@ void OnVkClick(lv_event_t* e) {
         } else if (which == VK_HOME) {
             if (sh.home_sel < static_cast<int>(sh.books.size())) {
                 OpenSessionPath(sh.books[sh.home_sel].c_str());
-            } else {
+            } else if (sh.home_sel == static_cast<int>(sh.books.size())) {
                 book_reader_show_settings();
+            } else {
+                book_reader_enter_standby();
             }
         }
         return;
     }
 
     if (sh.screen == ShellScreen::kSettings) {
+        const int max_settings_sel = kFontSizeCount + 1;
         if (which == VK_PREV) {
             if (sh.settings_sel > 0) {
                 sh.settings_sel--;
                 BuildSettingsScreen();
             }
         } else if (which == VK_NEXT) {
-            if (sh.settings_sel < kFontSizeCount - 1) {
+            if (sh.settings_sel < max_settings_sel) {
                 sh.settings_sel++;
                 BuildSettingsScreen();
             }
@@ -441,6 +536,46 @@ void BuildVStrip(lv_obj_t* root) {
     }
 }
 
+static void BuildTopStatusBar(lv_obj_t* parent, const char* title_text) {
+    auto& ui = Ui();
+    ui.status_h = StatusBarHeight();
+    lv_obj_t* bar = lv_obj_create(parent);
+    lv_obj_remove_style_all(bar);
+    lv_obj_set_size(bar, EPD_HOR_RES, ui.status_h);
+    lv_obj_align(bar, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_set_style_bg_opa(bar, LV_OPA_TRANSP, 0);
+    DisableScroll(bar);
+
+    // Left time label
+    lv_obj_t* time_lbl = lv_label_create(bar);
+    lv_label_set_text(time_lbl, GetTimeString().c_str());
+    lv_obj_align(time_lbl, LV_ALIGN_LEFT_MID, 12, 0);
+    lv_obj_set_style_text_font(time_lbl, ListFont(), 0);
+    lv_obj_set_style_text_color(time_lbl, lv_color_hex(0x444444), 0);
+
+    // Center title label
+    lv_obj_t* title_lbl = lv_label_create(bar);
+    lv_label_set_text(title_lbl, title_text ? title_text : "");
+    lv_obj_align(title_lbl, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_text_font(title_lbl, ListFont(), 0);
+    lv_obj_set_style_text_color(title_lbl, lv_color_black(), 0);
+
+    // Right battery label
+    lv_obj_t* bat_lbl = lv_label_create(bar);
+    lv_label_set_text(bat_lbl, GetBatteryString().c_str());
+    lv_obj_align(bat_lbl, LV_ALIGN_RIGHT_MID, -12, 0);
+    lv_obj_set_style_text_font(bat_lbl, ListFont(), 0);
+    lv_obj_set_style_text_color(bat_lbl, lv_color_hex(0x444444), 0);
+
+    // Bottom hairline divider
+    lv_obj_t* line = lv_obj_create(bar);
+    lv_obj_remove_style_all(line);
+    lv_obj_set_size(line, EPD_HOR_RES - 24, 1);
+    lv_obj_align(line, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_bg_color(line, lv_color_hex(0xCCCCCC), 0);
+    lv_obj_set_style_bg_opa(line, LV_OPA_COVER, 0);
+}
+
 void BuildScreen() {
     auto& ui = Ui();
     lv_obj_t* old_scr = ui.scr;
@@ -451,13 +586,7 @@ void BuildScreen() {
     lv_obj_set_style_text_color(ui.scr, lv_color_black(), 0);
     DisableScroll(ui.scr);
 
-    ui.status_h = StatusBarHeight();
-    lv_obj_t* status = lv_obj_create(ui.scr);
-    lv_obj_set_size(status, EPD_HOR_RES, ui.status_h);
-    lv_obj_set_style_bg_opa(status, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(status, 0, 0);
-    lv_obj_align(status, LV_ALIGN_TOP_LEFT, 0, 0);
-    DisableScroll(status);
+    BuildTopStatusBar(ui.scr, "Metalio Plus · 阅读");
 
     const lv_coord_t body_h = EPD_VER_RES - ui.status_h - kFooterH;
     const bool page_images = ui.session && ui.session->IsPageImagesMode();
@@ -552,6 +681,8 @@ bool OpenSessionPath(const char* path) {
     }
 
     Shell().screen = ShellScreen::kReader;
+    Shell().last_book = path != nullptr ? path : "";
+    NvsSaveLastBook(Shell().last_book);
     BuildScreen();
     RenderPage();
     return true;
@@ -637,16 +768,14 @@ void BuildHomeScreen() {
     lv_obj_set_style_bg_opa(ui.scr, LV_OPA_COVER, 0);
     lv_obj_set_style_text_font(ui.scr, ListFont(), 0);
     lv_obj_set_style_text_color(ui.scr, lv_color_black(), 0);
+    DisableScroll(ui.scr);
 
-    lv_obj_t* title = lv_label_create(ui.scr);
-    lv_label_set_text(title, "图书库  ·  Home");
-    lv_obj_set_style_text_font(title, ListFont(), 0);
-    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 12, 8);
+    BuildTopStatusBar(ui.scr, "图书库 · Library");
 
     lv_obj_t* list = lv_obj_create(ui.scr);
     lv_obj_remove_style_all(list);
-    lv_obj_set_size(list, EPD_HOR_RES - 24, EPD_VER_RES - 80);
-    lv_obj_align(list, LV_ALIGN_TOP_LEFT, 12, 50);
+    lv_obj_set_size(list, EPD_HOR_RES - 24, EPD_VER_RES - 110);
+    lv_obj_align(list, LV_ALIGN_TOP_LEFT, 12, ui.status_h + 10);
     lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
     lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_ON);
 
@@ -657,10 +786,13 @@ void BuildHomeScreen() {
         lv_obj_set_style_pad_all(empty, 8, 0);
     }
     for (size_t i = 0; i < sh.books.size(); ++i) {
-        // Display just the file name, not the full path.
         const std::string& p = sh.books[i];
         const char* nm = p.c_str() + p.find_last_of('/') + 1;
-        lv_obj_t* row = BuildRow(list, nm, (static_cast<int>(i) == sh.home_sel));
+        std::string row_name = nm;
+        if (!sh.last_book.empty() && (p == sh.last_book || p.find(sh.last_book) != std::string::npos)) {
+            row_name = "[★上次] " + row_name;
+        }
+        lv_obj_t* row = BuildRow(list, row_name.c_str(), (static_cast<int>(i) == sh.home_sel));
         lv_obj_add_event_cb(
             row,
             [](lv_event_t* e) {
@@ -677,7 +809,7 @@ void BuildHomeScreen() {
 
     // Settings shortcut row inside the list.
     const int settings_idx = static_cast<int>(sh.books.size());
-    lv_obj_t* set_row = BuildRow(list, "⚙  系统设置 · Settings", sh.home_sel == settings_idx);
+    lv_obj_t* set_row = BuildRow(list, "⚙  系统设置 · Settings (S)", sh.home_sel == settings_idx);
     lv_obj_add_event_cb(
         set_row,
         [](lv_event_t*) {
@@ -686,10 +818,21 @@ void BuildHomeScreen() {
         LV_EVENT_CLICKED,
         nullptr);
 
+    // Standby shortcut row inside the list.
+    const int standby_idx = settings_idx + 1;
+    lv_obj_t* stb_row = BuildRow(list, "🌙  待机屏保 · Standby (P)", sh.home_sel == standby_idx);
+    lv_obj_add_event_cb(
+        stb_row,
+        [](lv_event_t*) {
+            book_reader_enter_standby();
+        },
+        LV_EVENT_CLICKED,
+        nullptr);
+
     // Settings shortcut / hint at the bottom.
     lv_obj_t* gear = lv_label_create(ui.scr);
-    lv_label_set_text(gear, "↑/↓ 选择  ·  ⏎ 打开  ·  S 设置  ·  H 返回");
-    lv_obj_align(gear, LV_ALIGN_BOTTOM_LEFT, 12, -30);
+    lv_label_set_text(gear, "↑/↓ 选择  ·  ⏎ 打开  ·  P 待机  ·  S 设置  ·  H 返回");
+    lv_obj_align(gear, LV_ALIGN_BOTTOM_LEFT, 12, -24);
     lv_obj_set_style_text_font(gear, ListFont(), 0);
 
     BuildVStrip(ui.scr);
@@ -710,16 +853,16 @@ void BuildSettingsScreen() {
     lv_obj_set_style_bg_opa(ui.scr, LV_OPA_COVER, 0);
     lv_obj_set_style_text_font(ui.scr, ListFont(), 0);
     lv_obj_set_style_text_color(ui.scr, lv_color_black(), 0);
+    DisableScroll(ui.scr);
 
-    lv_obj_t* title = lv_label_create(ui.scr);
-    lv_label_set_text(title, "设置  ·  Settings");
-    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 12, 8);
+    BuildTopStatusBar(ui.scr, "系统设置 · Settings");
 
     lv_obj_t* list = lv_obj_create(ui.scr);
     lv_obj_remove_style_all(list);
-    lv_obj_set_size(list, EPD_HOR_RES - 24, EPD_VER_RES - 120);
-    lv_obj_align(list, LV_ALIGN_TOP_LEFT, 12, 50);
+    lv_obj_set_size(list, EPD_HOR_RES - 24, EPD_VER_RES - 110);
+    lv_obj_align(list, LV_ALIGN_TOP_LEFT, 12, ui.status_h + 10);
     lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
+    lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_ON);
 
     for (int i = 0; i < kFontSizeCount; ++i) {
         char buf[32];
@@ -733,6 +876,7 @@ void BuildSettingsScreen() {
                 auto& s = Shell();
                 s.settings_sel = idx;
                 s.font_size_idx = idx;
+                NvsSaveFontIdx(idx);
                 book_reader_set_epdfont_path(FontPathFor(idx).c_str());
                 auto& u = Ui();
                 if (u.session && u.session->IsOpen()) {
@@ -745,9 +889,119 @@ void BuildSettingsScreen() {
             reinterpret_cast<void*>(static_cast<std::intptr_t>(i)));
     }
 
+    // Refresh mode toggle row
+    const int refr_idx = kFontSizeCount;
+    char refr_buf[64];
+    std::snprintf(refr_buf, sizeof(refr_buf), "刷新模式: %s",
+                  sh.refresh_mode == 0 ? "局刷 (Partial) ✓" : "全刷 (Full) ✓");
+    lv_obj_t* refr_row = BuildRow(list, refr_buf, sh.settings_sel == refr_idx);
+    lv_obj_add_event_cb(
+        refr_row,
+        [](lv_event_t*) {
+            auto& s = Shell();
+            s.refresh_mode = 1 - s.refresh_mode;
+            NvsSaveRefreshMode(s.refresh_mode);
+            BuildSettingsScreen();
+        },
+        LV_EVENT_CLICKED,
+        nullptr);
+
+    // Standby row
+    const int standby_idx = kFontSizeCount + 1;
+    lv_obj_t* stb_row = BuildRow(list, "🌙  立即进入待机 · Standby (P)", sh.settings_sel == standby_idx);
+    lv_obj_add_event_cb(
+        stb_row,
+        [](lv_event_t*) {
+            book_reader_enter_standby();
+        },
+        LV_EVENT_CLICKED,
+        nullptr);
+
+    // Hardware spec card
+    lv_obj_t* card = lv_obj_create(list);
+    lv_obj_remove_style_all(card);
+    lv_obj_set_width(card, lv_pct(100));
+    lv_obj_set_style_pad_all(card, 12, 0);
+    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_border_color(card, lv_color_hex(0xBBBBBB), 0);
+    lv_obj_set_style_radius(card, 6, 0);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t* info_lbl = lv_label_create(card);
+    lv_label_set_text(info_lbl,
+        "硬件型号: Metalio E-Ink 4 Plus (684×1216)\n"
+        "电量状态: 70% (BQ27220)  ·  时钟: PCF8563\n"
+        "按键映射: BOOT(B), VOL+(]/=), VOL-([/-), PWR(P)\n"
+        "虚拟触控: HOME(H), PREV(K), NEXT(J)\n"
+        "数据存储: NVS File Storage ($ZONHAND_NVS_DIR)");
+    lv_obj_set_style_text_font(info_lbl, ListFont(), 0);
+    lv_obj_set_style_text_color(info_lbl, lv_color_hex(0x555555), 0);
+
     lv_obj_t* hint = lv_label_create(ui.scr);
-    lv_label_set_text(hint, "↑/↓ 选择字号  ·  ⏎ 应用  ·  ESC/H 返回");
-    lv_obj_align(hint, LV_ALIGN_BOTTOM_LEFT, 12, -30);
+    lv_label_set_text(hint, "↑/↓ 选择  ·  ⏎ 确定/切换  ·  P 待机  ·  ESC/H 返回");
+    lv_obj_align(hint, LV_ALIGN_BOTTOM_LEFT, 12, -24);
+    lv_obj_set_style_text_font(hint, ListFont(), 0);
+
+    BuildVStrip(ui.scr);
+    lv_screen_load(ui.scr);
+    if (old_scr != nullptr && lv_obj_is_valid(old_scr)) {
+        lv_obj_delete(old_scr);
+    }
+}
+
+void BuildStandbyScreen() {
+    auto& ui = Ui();
+    lv_obj_t* old_scr = ui.scr;
+    ui.content = nullptr;
+    ui.footer = nullptr;
+    ui.scr = lv_obj_create(nullptr);
+    lv_obj_set_style_bg_color(ui.scr, lv_color_hex(0x1F2421), 0); // E-paper dark standby wallpaper
+    lv_obj_set_style_bg_opa(ui.scr, LV_OPA_COVER, 0);
+    lv_obj_set_style_text_font(ui.scr, ListFont(), 0);
+    lv_obj_set_style_text_color(ui.scr, lv_color_hex(0xEFEBE0), 0);
+    DisableScroll(ui.scr);
+
+    // Frame
+    lv_obj_t* card = lv_obj_create(ui.scr);
+    lv_obj_remove_style_all(card);
+    lv_obj_set_size(card, EPD_HOR_RES - 60, EPD_VER_RES - 200);
+    lv_obj_align(card, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_border_width(card, 2, 0);
+    lv_obj_set_style_border_color(card, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_radius(card, 8, 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_TRANSP, 0);
+
+    lv_obj_t* brand = lv_label_create(card);
+    lv_label_set_text(brand, "Metalio E-Ink 4 Plus");
+    lv_obj_align(brand, LV_ALIGN_TOP_MID, 0, 40);
+
+    lv_obj_t* mode = lv_label_create(card);
+    lv_label_set_text(mode, "待 机 屏 保 · STANDBY");
+    lv_obj_align(mode, LV_ALIGN_TOP_MID, 0, 80);
+    lv_obj_set_style_text_color(mode, lv_color_hex(0xAAAAAA), 0);
+
+    lv_obj_t* clock = lv_label_create(card);
+    lv_label_set_text(clock, GetTimeString().c_str());
+    lv_obj_align(clock, LV_ALIGN_CENTER, 0, -40);
+
+    lv_obj_t* date = lv_label_create(card);
+    lv_label_set_text(date, GetDateString().c_str());
+    lv_obj_align(date, LV_ALIGN_CENTER, 0, 20);
+    lv_obj_set_style_text_color(date, lv_color_hex(0xAAAAAA), 0);
+
+    lv_obj_t* bat = lv_label_create(card);
+    std::string bat_str = "电量 " + GetBatteryString();
+    lv_label_set_text(bat, bat_str.c_str());
+    lv_obj_align(bat, LV_ALIGN_CENTER, 0, 60);
+
+    lv_obj_t* hint = lv_label_create(card);
+    lv_label_set_text(hint, "按 P (电源键) 或 任意键唤醒\nPress P (POWER) or Any Key to Wake");
+    lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -40);
+
+    lv_obj_add_event_cb(ui.scr, [](lv_event_t*) {
+        book_reader_exit_standby();
+    }, LV_EVENT_CLICKED, nullptr);
 
     BuildVStrip(ui.scr);
     lv_screen_load(ui.scr);
@@ -762,6 +1016,7 @@ extern "C" {
 
 void book_reader_init(void) {
     s_ui_ready = true;
+    NvsLoad();
     auto& sh = Shell();
     if (sh.font_dir.empty()) {
         sh.font_dir = ResolveFontDir();
@@ -783,9 +1038,47 @@ void book_reader_show_settings(void) {
     BuildSettingsScreen();
 }
 
+void book_reader_toggle_standby(void) {
+    auto& sh = Shell();
+    if (sh.screen == ShellScreen::kStandby) {
+        book_reader_exit_standby();
+    } else {
+        book_reader_enter_standby();
+    }
+}
+
+void book_reader_enter_standby(void) {
+    auto& sh = Shell();
+    if (sh.screen != ShellScreen::kStandby) {
+        sh.prev_screen = sh.screen;
+        sh.screen = ShellScreen::kStandby;
+        BuildStandbyScreen();
+    }
+}
+
+void book_reader_exit_standby(void) {
+    auto& sh = Shell();
+    if (sh.screen == ShellScreen::kStandby) {
+        auto& ui = Ui();
+        if (sh.prev_screen == ShellScreen::kReader && ui.session && ui.session->IsOpen()) {
+            sh.screen = ShellScreen::kReader;
+            BuildScreen();
+            RenderPage();
+        } else if (sh.prev_screen == ShellScreen::kSettings) {
+            book_reader_show_settings();
+        } else {
+            book_reader_show_home();
+        }
+    }
+}
+
+bool book_reader_is_standby(void) {
+    return Shell().screen == ShellScreen::kStandby;
+}
+
 // ---------------------------------------------------------------------------
 // Input shim (T4/T2'): wire host mouse + keyboard onto the simulated device's keys.
-// Mode-aware: handles navigation on Home, Settings, and Reader screens.
+// Mode-aware: handles navigation on Home, Settings, Standby, and Reader screens.
 // ---------------------------------------------------------------------------
 void book_reader_input_init(void) {
     if (s_ui_ready == false) return;
@@ -809,14 +1102,30 @@ void book_reader_input_init(void) {
                 const uint32_t key = lv_indev_get_key(indev);
                 auto& sh = Shell();
 
+                // Standby wake: any key press exits standby
+                if (sh.screen == ShellScreen::kStandby) {
+                    book_reader_exit_standby();
+                    return;
+                }
+
+                // Global physical key mappings
+                if (key == 'p' || key == 'P') {
+                    book_reader_toggle_standby();
+                    return;
+                }
+                if (key == 'b' || key == 'B') {
+                    book_reader_show_home();
+                    return;
+                }
+
                 if (sh.screen == ShellScreen::kHome) {
-                    const int max_sel = static_cast<int>(sh.books.size());
-                    if (key == LV_KEY_UP || key == LV_KEY_LEFT || key == 'k' || key == 'K' || key == 'a' || key == 'A') {
+                    const int max_sel = static_cast<int>(sh.books.size()) + 1;
+                    if (key == LV_KEY_UP || key == LV_KEY_LEFT || key == 'k' || key == 'K' || key == 'a' || key == 'A' || key == '=' || key == '+' || key == ']') {
                         if (sh.home_sel > 0) {
                             sh.home_sel--;
                             BuildHomeScreen();
                         }
-                    } else if (key == LV_KEY_DOWN || key == LV_KEY_RIGHT || key == 'j' || key == 'J' || key == 'd' || key == 'D') {
+                    } else if (key == LV_KEY_DOWN || key == LV_KEY_RIGHT || key == 'j' || key == 'J' || key == 'd' || key == 'D' || key == '-' || key == '_' || key == '[') {
                         if (sh.home_sel < max_sel) {
                             sh.home_sel++;
                             BuildHomeScreen();
@@ -824,8 +1133,10 @@ void book_reader_input_init(void) {
                     } else if (key == LV_KEY_ENTER || key == '\n' || key == '\r') {
                         if (sh.home_sel < static_cast<int>(sh.books.size())) {
                             OpenSessionPath(sh.books[sh.home_sel].c_str());
-                        } else {
+                        } else if (sh.home_sel == static_cast<int>(sh.books.size())) {
                             book_reader_show_settings();
+                        } else {
+                            book_reader_enter_standby();
                         }
                     } else if (key == 's' || key == 'S') {
                         book_reader_show_settings();
@@ -834,25 +1145,35 @@ void book_reader_input_init(void) {
                         BuildHomeScreen();
                     }
                 } else if (sh.screen == ShellScreen::kSettings) {
-                    if (key == LV_KEY_UP || key == LV_KEY_LEFT || key == 'k' || key == 'K' || key == 'a' || key == 'A') {
+                    const int max_settings_sel = kFontSizeCount + 1;
+                    if (key == LV_KEY_UP || key == LV_KEY_LEFT || key == 'k' || key == 'K' || key == 'a' || key == 'A' || key == '=' || key == '+' || key == ']') {
                         if (sh.settings_sel > 0) {
                             sh.settings_sel--;
                             BuildSettingsScreen();
                         }
-                    } else if (key == LV_KEY_DOWN || key == LV_KEY_RIGHT || key == 'j' || key == 'J' || key == 'd' || key == 'D') {
-                        if (sh.settings_sel < kFontSizeCount - 1) {
+                    } else if (key == LV_KEY_DOWN || key == LV_KEY_RIGHT || key == 'j' || key == 'J' || key == 'd' || key == 'D' || key == '-' || key == '_' || key == '[') {
+                        if (sh.settings_sel < max_settings_sel) {
                             sh.settings_sel++;
                             BuildSettingsScreen();
                         }
                     } else if (key == LV_KEY_ENTER || key == '\n' || key == '\r') {
-                        sh.font_size_idx = sh.settings_sel;
-                        std::string fp = FontPathFor(sh.font_size_idx);
-                        book_reader_set_epdfont_path(fp.c_str());
-                        auto& u = Ui();
-                        if (u.session && u.session->IsOpen()) {
-                            sh.screen = ShellScreen::kReader;
-                        } else {
+                        if (sh.settings_sel < kFontSizeCount) {
+                            sh.font_size_idx = sh.settings_sel;
+                            NvsSaveFontIdx(sh.font_size_idx);
+                            std::string fp = FontPathFor(sh.font_size_idx);
+                            book_reader_set_epdfont_path(fp.c_str());
+                            auto& u = Ui();
+                            if (u.session && u.session->IsOpen()) {
+                                sh.screen = ShellScreen::kReader;
+                            } else {
+                                BuildSettingsScreen();
+                            }
+                        } else if (sh.settings_sel == kFontSizeCount) {
+                            sh.refresh_mode = 1 - sh.refresh_mode;
+                            NvsSaveRefreshMode(sh.refresh_mode);
                             BuildSettingsScreen();
+                        } else {
+                            book_reader_enter_standby();
                         }
                     } else if (key == LV_KEY_ESC || key == 'h' || key == 'H' || key == 'q' || key == 'Q') {
                         auto& u = Ui();
@@ -865,9 +1186,9 @@ void book_reader_input_init(void) {
                         }
                     }
                 } else {  // ShellScreen::kReader
-                    if (key == LV_KEY_LEFT || key == LV_KEY_UP || key == LV_KEY_PREV || key == 'a' || key == 'A' || key == 'k' || key == 'K') {
+                    if (key == LV_KEY_LEFT || key == LV_KEY_UP || key == LV_KEY_PREV || key == 'a' || key == 'A' || key == 'k' || key == 'K' || key == '=' || key == '+' || key == ']') {
                         book_reader_prev_page();
-                    } else if (key == LV_KEY_RIGHT || key == LV_KEY_DOWN || key == LV_KEY_NEXT || key == 'd' || key == 'D' || key == 'j' || key == 'J') {
+                    } else if (key == LV_KEY_RIGHT || key == LV_KEY_DOWN || key == LV_KEY_NEXT || key == 'd' || key == 'D' || key == 'j' || key == 'J' || key == '-' || key == '_' || key == '[') {
                         book_reader_next_page();
                     } else if (key == 'h' || key == 'H') {
                         book_reader_vk_home();

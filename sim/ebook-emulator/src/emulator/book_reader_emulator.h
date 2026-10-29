@@ -39,6 +39,10 @@ void book_reader_vk_home(void);
  * the settings row (or 'S'-free: last row) opens font-size settings. */
 void book_reader_show_home(void);
 void book_reader_show_settings(void);
+void book_reader_toggle_standby(void);
+void book_reader_enter_standby(void);
+void book_reader_exit_standby(void);
+bool book_reader_is_standby(void);
 void book_reader_go_toc(int index);
 int book_reader_toc_count(void);
 const char* book_reader_toc_title(int index);

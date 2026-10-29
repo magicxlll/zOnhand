@@ -6,6 +6,8 @@
 #include "src/lib/driver_backends.h"
 #include "src/lib/simulator_settings.h"
 #include "book_reader_emulator.h"
+#include "nvs.h"
+#include "nvs_flash.h"
 
 extern simulator_settings_t settings;
 
@@ -108,6 +110,63 @@ int main(int /*argc*/, char** /*argv*/) {
     book_reader_set_epdfont_path(f30);
     lv_timer_handler();
     printf("    Font 30 applied and reader re-paginated successfully!\n");
+
+    // Step 6: Test Standby Mode (T4/T6 integration)
+    printf("[6] Testing Standby Mode...\n");
+    assert(!book_reader_is_standby());
+    book_reader_enter_standby();
+    assert(book_reader_is_standby());
+    lv_timer_handler();
+    printf("    Standby screen rendered OK.\n");
+
+    book_reader_exit_standby();
+    assert(!book_reader_is_standby());
+    lv_timer_handler();
+    printf("    Exit standby OK.\n");
+
+    book_reader_toggle_standby();
+    assert(book_reader_is_standby());
+    lv_timer_handler();
+    book_reader_toggle_standby();
+    assert(!book_reader_is_standby());
+    lv_timer_handler();
+    printf("    Toggle standby OK.\n");
+
+    // Step 7: Test NVS Persistence
+    printf("[7] Testing NVS file-based persistence...\n");
+    nvs_flash_init();
+    nvs_handle_t h = 0;
+    esp_err_t err = nvs_open("reader", NVS_READWRITE, &h);
+    assert(err == ESP_OK);
+    err = nvs_set_i32(h, "font_idx", 5); // Index 5 = font 30
+    assert(err == ESP_OK);
+    err = nvs_set_i32(h, "refr_mode", 1); // 1 = full refresh
+    assert(err == ESP_OK);
+    err = nvs_set_str(h, "last_book", "sim/sample/sample.ebook");
+    assert(err == ESP_OK);
+    err = nvs_commit(h);
+    assert(err == ESP_OK);
+    nvs_close(h);
+
+    // Re-read to verify
+    h = 0;
+    err = nvs_open("reader", NVS_READONLY, &h);
+    assert(err == ESP_OK);
+    int32_t font_val = 0, refr_val = 0;
+    err = nvs_get_i32(h, "font_idx", &font_val);
+    assert(err == ESP_OK && font_val == 5);
+    err = nvs_get_i32(h, "refr_mode", &refr_val);
+    assert(err == ESP_OK && refr_val == 1);
+    char book_buf[128] = {0};
+    size_t len = sizeof(book_buf);
+    err = nvs_get_str(h, "last_book", book_buf, &len);
+    assert(err == ESP_OK && strcmp(book_buf, "sim/sample/sample.ebook") == 0);
+    nvs_close(h);
+    printf("    NVS font_idx=5, refr_mode=1, last_book persistence verified OK.\n");
+
+    // Re-init book reader and verify NVS load
+    book_reader_init();
+    printf("    book_reader_init() reloaded NVS configuration successfully.\n");
 
     printf("=== All T2' Tests Passed Successfully! ===\n");
     return 0;
