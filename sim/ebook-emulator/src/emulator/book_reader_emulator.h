@@ -31,6 +31,14 @@ void book_reader_prev_page(void);
  *  vk_home "one-tap back to system home" needs the app shell (T2+); inside the
  *  reader the closest host behavior is page 0. */
 void book_reader_vk_home(void);
+
+/* T2' host app shell: Home (book library) + Settings (font size), layered on
+ * top of the reader core. Suggested boot flow:
+ *   book_reader_init() -> book_reader_input_init() -> [EBOOK_PATH? open book]
+ * Home shows the library (EBOOK_LIBDIR), ENTER opens the selected .ebook,
+ * the settings row (or 'S'-free: last row) opens font-size settings. */
+void book_reader_show_home(void);
+void book_reader_show_settings(void);
 void book_reader_go_toc(int index);
 int book_reader_toc_count(void);
 const char* book_reader_toc_title(int index);

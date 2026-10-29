@@ -43,27 +43,27 @@ Mục tiêu (chốt 2026-10-28, sau phỏng vấn intent):
 - [x] **Bước 1 (2026-10-28): Clone CloudZao về `vendor/cloudzao/`, đọc `config.h` + `metalio_keys.cc` + `lv_adapter_epdiy.cc` → có GPIO/IO map thật (xem §3 — sửa theo source, bỏ giả định "núm xoay")**. Node v26.12.1 (đủ cho REA), gh token scope bị giới hạn nhưng git HTTPS OK.
 - [x] **Spec/plan/tasks + skills + rules + ADR + ref scans** (docs/, .claude/, README, file này) — đã commit+push lần đầu lên `magicxlll/zOnhand` (commit aeb2467)
 - [x] **ESP-IDF v6.1 install ở `~/esp/esp-idf`** (Python 3.14 env, target `esp32s31` được hỗ trợ chính thức — B4 hạ cấp). BUILD FW THẬT fail: thiếu managed components `78__uart-uhci`, `espressif__iot_eth` (không có trong `main/idf_component.yml`) → **chờ user decide** (thêm dep + vendor file, hay chấp nhận baseline = harness native).
-- [x] **T1 de-risk: harness native `ebook_sim` build + CHẠY được trên macOS** (SDL2 window, LVGL init, đọc .ebook) sau 5 vá trong `sim/` (chi tiết `docs/spec-phase-1.md` §10b Phát hiện #4).
-- [x] **T1 (revise) XONG:** harness native `ebook_sim` build + CHẠY được trên macOS (SDL2, LVGL init, đọc .ebook 1 chapter, chạy >7s không crash). Vá 5 chỗ trong `sim/` (chi tiết `docs/spec-phase-1.md` §10b Phát hiện #4). Crash SIGSEGV đã fix (root cause: font `.ef` là symlink hỏng upstream → sửa symlink).
-- [x] **`sim/run.sh`** launcher end-to-end: `cd sim && ./run.sh` (build + gen sample .ebook + chạy, không cần env).
-- [x] **T3 XONG (commit cbe38a6):** panel 684×1216 (E-Ink4 Plus). `EPD_HOR_RES/EPD_VER_RES` đổi trong `book_reader_emulator.h`, SDL window + reader render đúng. Chạy clean.
-- [x] **T4 XONG (commit 7e10f53):** input shim — register `lv_sdl_mouse_create` (pointer) + `lv_sdl_keyboard_create` (keypad) indevs; map LEFT/UP/PREV/`a`→PrevPage, RIGHT/DOWN/NEXT/`d`→NextPage (đọc sách = page-turn là action chủ đạo). Sim render + tương tác được, không crash.
-- [x] **T5 XONG (commit 71fc056):** virtual-key strip (3 vạch HOME/PREV/NEXT, đúng vị trí out-of-band FT6336) + phím H/J/K. Reader giữ 684×1216, display 728×1216 (panel+strip).
-- [ ] **T2 (milestone chính):** wire `Application::Start` (boot fw thật: main UI 3×3 grid + settings) — cần stub wifi (B5), verify không treo ở `board.StartNetwork`. Lớn hơn T3/T4 nhiều (kéo theo nhiều ESP-IDF).
-- [ ] REA phân tích `RickyOS-Plus-1.2.9-full.bin` → danh sách tính năng (đề xuất, user review).
-- [ ] REA phân tích `RickyOS-Plus-1.2.9-full.bin` → danh sách tính năng (đề xuất, user review)
+- [x] **T1 XONG (commits 5a5e2ea, ab73f2a):** harness native `ebook_sim` build + CHẠY thật trên macOS (SDL2, LVGL v9.5, đọc .ebook 1 chapter, >7s clean). Vá 5 chỗ trong `sim/`. Crash SIGSEGV đã fix (root cause: font `.ef` upstream là symlink hỏng → sửa symlink về `vendor/cloudzao/tools/epdfont/MiSans-Light/`). `sim/run.sh` launcher end-to-end.
+- [x] **T3 XONG (cbe38a6):** panel **684×1216** (E-Ink4 Plus) thay harness mặc định 480×800.
+- [x] **T4 XONG (7e10f53):** input shim — register `lv_sdl_mouse_create`+`lv_sdl_keyboard_create`; phím `←↑a k`=prev, `→↓d j`=next.
+- [x] **T5 XONG (71fc056):** virtual-key strip (3 vạch cam HOME/PREV/NEXT trên bezel phải, đúng FT6336 out-of-band) + phím `H`=về trang 1. Display 728×1216 (panel 684 + strip 44).
+- [x] **REA `.bin` XONG (09:15):** `docs/feature-list-recommended.md` (CHƯA commit — phiên mới commit). Phát hiện: .bin = **CrossPoint Reader rebrand (RickyOS), Arduino-ESP32 RC1, KHÔNG cùng codebase** `vendor/cloudzao`. Tính năng riêng (WeRead/KOReader sync, OPDS, gamification, Gomoku, WAV) = Phase 2/3.
+- [ ] **T2' ĐANG DỞ (uncommitted):** app shell host (Home=lưới thư viện sách + Settings=chọn字号 qua `.ef` thật) trên `BookSession` thật. **Đã viết:** ShellScreen/ShellState/ScanBooks/BuildHomeScreen/BuildSettingsScreen + header khai báo. **Còn thiếu (5 mục chi tiết):** xem `docs/handoff-2026-10-29.md` §3.
+- [ ] **T2-full (sau T2', theo D3):** chuỗi shim `sim/shim/` (freertos→thread, nvs→file, wifi/audio/OTA no-op) → boot `Application::Start()` thật. Chi tiết handoff §4.
+- [ ] **Chờ user review:** danh sách tính năng RickyOS trong `docs/feature-list-recommended.md` (quyết Phase 2 scope).
 
-### Decision (user chốt 2026-10-29)
-- **Cấu trúc VM: "(a) + rail [khuyến nghị]"** — mở rộng harness `ebook-emulator` ĐÃ chạy (demo nhanh), nhưng viết các shim phím/touch/SD/NVS **theo kiến trúc host-shim** để sau này đóng được thành `sim/` sạch. Không viết lại từ 0 (loại hướng (b)-thuần).
-- **Build fw thật: "bo qua, chạy VM trước"** — chưa có máy thật để so, chưa cần baseline build. Lùi việc `idf.py build` (thiếu managed components `78__uart-uhci` + `espressif__iot_eth`) sang sau. Tập trung VM. (Chú ý: `78/uart-uhci` CÓ trên GitHub; `espressif/iot_eth` KHÔNG có GitHub công khai — cần user chỉ nguồn nếu after này decide build thật.)
+### Decision (user chốt 2026-10-29, bản đầy đủ)
+- **D1 — Cấu trúc VM: "(a) + rail [khuyến nghị]"** — mở rộng harness `ebook-emulator` ĐÃ chạy (demo nhanh), nhưng mọi shim (phím/touch/SD/NVS) viết **theo kiến trúc host-shim** (`sim/shim/`) để sau này đóng thành `sim/` sạch. Không viết lại từ 0.
+- **D2 — Build fw thật: "bo qua, chạy VM trước"** — chưa có máy thật để so. Lùi `idf.py build` (thiếu `78__uart-uhci` + `espressif__iot_eth`) sang sau. (Ghi chú: `78/uart-uhci` CÓ trên GitHub `https://github.com/78/uart-uhci`; `espressif/iot_eth` KHÔNG public — cần user chỉ nguồn nếu after decide build thật.)
+- **D3 — T2: "T2' rồi T2-full [khuyến nghị]"** — trước: app shell host (Home + Settings trên BookSession thật, ~1 ngày); sau: chuỗi shim FreeRTOS/NVS/wifi → boot `Application::Start()` thật.
 
 ## 5. Blockers & Open Questions
 
 - **gh token của `magicxlll` thiếu scope `read:org`** → `gh` CLI không auth được; **git HTTPS OK** (token repo-local `.git/.git-credentials-local`, KHÔNG commit). Backup chạy qua `git push`.
 - `RickyOS-Plus-1.2.9-full.bin` là **không phải** fw chính thức phát hành (trang demo ghi "chính thức chưa phát hành") — vật phẩm tham khảo.
 - CloudZao fw AI voice (Baiwen) cần Wi-Fi/MQTT/WebSocket — pha 2, stub no-op trong pha 1.
-- **Build fw thật (baseline) fail**: thiếu managed components `78__uart-uhci` + `espressif__iot_eth` (REQUIRES `main/CMakeLists.txt:230` nhưng KHÔNG có trong `main/idf_component.yml`; `managed_components/` ship thiếu). Chờ user decide: (a) thêm dep + fetch (đụng vendor), hay (b) chấp nhận "baseline build" = harness native + ghi nhận.
-- **Crash `ebook_sim` (SIGSEGV font NULL)**: đang debug — xem `docs/spec-phase-1.md` §10b Phát hiện #4.
+- **Build fw thật (baseline) fail — BO QUA theo D2 (chốt 2026-10-29):** thiếu managed components `78__uart-uhci` + `espressif__iot_eth` (REQUIRES `main/CMakeLists.txt:230` nhưng KHÔNG có trong `main/idf_component.yml`; `managed_components/` ship thiếu). Lùi sang sau. `78/uart-uhci` CÓ trên GitHub; `espressif/iot_eth` KHÔNG public (cần user chỉ nguồn nếu after decide build thật).
+- **Chờ user review REA:** danh sách tính năng RickyOS trong `docs/feature-list-recommended.md` (WeRead/KOReader/OPDS/gamification/Gomoku/WAV) → quyết Phase 2 scope.
 
 ## 5b. Phát hiện từ source (đúng 100%, dùng cho spec — không được thay bằng đoán)
 
@@ -74,20 +74,13 @@ Mục tiêu (chốt 2026-10-28, sau phỏng vấn intent):
 - BOOT long = shutdown; POWER short = màn hình tắt/đánh thức; VOL+ long = vol max (hoặc page_prev liên tục khi đọc); VOL- long = mute (hoặc page_next).
 - **TCA9555 expander** (I2C 0x20, INT=GPIO2) phải được mô phỏng chính xác trong simulator (mỗi phím = bit port).
 
-## 5. Blockers & Open Questions
-
-- **gh token của `magicxlll` invalid** → user cần `! gh auth login -h github.com` (hoặc sửa token) trước khi auto-backup được. Chạy `gh auth status` để check.
-- `RickyOS-Plus-1.2.9-full.bin` là **không phải** firmware chính thức phát hành (trang demo ghi "chính thức chưa phát hành") — là vật phẩm tham khảo.
-- CloudZao fw có feature AI voice (Baiwen) cần Wi-Fi/MQTT/WebSocket — pha 2, stub no-op trong pha 1.
-- ESP32-S31 là chip RISC-V khá mới — cần confirm có SDK/ESP-IDF v6.1 build được cho target này chưa, hay phải dùng ESP32-S3 (hiếm khi S31 = S3 rename). **Kiểm tra trong lúc clone.**
-
-## 6. File Map (dự án, khi start)
+## 6. File Map (thực tế hiện tại)
 
 - `README.md` — doc chính
-- `docs/` — ADRs, intent, spec pha 1
-- `.claude/skills/` — skill dự án (phong cách `agent-skills`)
-- `.claude/rules/` — rules dự án
-- `Project_memory.md` — file này (đặt ở repo root, không phải `memory/` cục bộ)
-- `vendor/CloudZao/` (hoặc `simulator/`) — source fw + shim
-- `fw-reference/` — RickyOS .bin + output REA
-- `sim/` — code simulator (SDL2 + shim)
+- `docs/` — ADRs, intent, spec pha 1 (`spec-phase-1.md`), `feature-list-recommended.md` (REA, chưa commit), **`handoff-2026-10-29.md` (báo cáo chi tiết + prompt phiên sau)**, `ref/` (source-scan ground truth)
+- `.claude/skills/` + `.claude/rules/` — skill + rules dự án
+- `Project_memory.md` — file này (repo root)
+- `vendor/cloudzao/` — source fw (READ-ONLY; HEAD pin `2f55cb1`; gitignored khỏi backup repo)
+- `firmware-reference/` — `RickyOS-Plus-1.2.9-full.bin` + output REA
+- `sim/ebook-emulator/` — harness native (copy từ `vendor/.../tools/ebook/emulator/`, `lvgl/` = symlink)
+- `sim/run.sh` — launcher; `sim/sample/` — .ebook mẫu

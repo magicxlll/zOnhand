@@ -1,11 +1,15 @@
 #include "book_reader_emulator.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <dirent.h>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "font_emulator.h"
 #include "epdfont.h"
@@ -424,6 +428,186 @@ bool OpenSessionPath(const char* path) {
     BuildScreen();
     RenderPage();
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// T2' host app shell: Home (book library) + Settings (font size), layered on
+// the reader core. "Rail" architecture — these are host UI additions; they do
+// NOT touch reader::BookSession (the real CloudZao core). The device's true
+// boot (Application::Start) is T2-full.
+// ---------------------------------------------------------------------------
+enum class ShellScreen { kHome, kSettings, kReader };
+
+// Available .ef font sizes (matches vendor tools/epdfont/MiSans-Light/).
+constexpr int kFontSizes[] = {20, 22, 24, 25, 28, 30, 34, 40};
+constexpr int kFontSizeCount = sizeof(kFontSizes) / sizeof(kFontSizes[0]);
+
+struct ShellState {
+    ShellScreen screen = ShellScreen::kHome;
+    int home_sel = 0;
+    int settings_sel = 0;      // which setting row is focused
+    int font_size_idx = 3;     // -> kFontSizes[3] = 25 (default, matches shipped .ef)
+    std::vector<std::string> books;   // .ebook/.epub paths
+    std::string font_dir;             // dir holding misans_*.ef
+};
+
+static ShellState& Shell() {
+    static ShellState s;
+    return s;
+}
+
+// Scan a directory for readable e-book files (.ebook / .epub).
+static std::vector<std::string> ScanBooks(const char* dir) {
+    std::vector<std::string> out;
+    if (dir == nullptr || dir[0] == '\0') {
+        return out;
+    }
+    std::vector<std::string> dirs;
+    dirs.push_back(dir);
+    // Also try a common sub-directory "Books".
+    dirs.push_back(std::string(dir) + "/Books");
+    for (const auto& d : dirs) {
+        DIR* dp = ::opendir(d.c_str());
+        if (dp == nullptr) {
+            continue;
+        }
+        struct dirent* ent;
+        std::string base = d;
+        if (!base.empty() && base.back() == '/') {
+            base.pop_back();
+        }
+        while ((ent = ::readdir(dp)) != nullptr) {
+            const std::string name = ent->d_name;
+            if (name == "." || name == "..") {
+                continue;
+            }
+            if (name.size() >= 6 &&
+                (name.compare(name.size() - 6, 6, ".ebook") == 0 ||
+                 name.compare(name.size() - 5, 5, ".epub") == 0)) {
+                out.push_back(base + "/" + name);
+            }
+        }
+        ::closedir(dp);
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+static std::string FontPathFor(int idx) {
+    auto& sh = Shell();
+    if (sh.font_dir.empty()) {
+        return "";
+    }
+    return sh.font_dir + "/misans_" + std::to_string(kFontSizes[idx]) + "_2.ef";
+}
+
+// Build a single scrollable list row. Returns the object.
+static lv_obj_t* BuildRow(lv_obj_t* parent, const char* text, bool selected) {
+    lv_obj_t* row = lv_obj_create(parent);
+    lv_obj_remove_style_all(row);
+    lv_obj_set_width(row, lv_pct(100));
+    lv_obj_set_height(row, 44);
+    lv_obj_set_style_pad_all(row, 8, 0);
+    lv_obj_set_style_pad_ver(row, 4, 0);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_radius(row, 6, 0);
+    lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
+    if (selected) {
+        lv_obj_set_style_bg_color(row, lv_color_hex(0x2b2b2b), 0);
+        lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
+    }
+    lv_obj_t* t = lv_label_create(row);
+    lv_label_set_text(t, text);
+    lv_label_set_long_mode(t, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(t, lv_pct(100));
+    lv_obj_set_style_text_color(t, selected ? lv_color_hex(0xF0A500) : lv_color_black(), 0);
+    return row;
+}
+
+void BuildHomeScreen() {
+    auto& ui = Ui();
+    auto& sh = Shell();
+    if (ui.scr != nullptr && lv_obj_is_valid(ui.scr)) {
+        lv_obj_delete(ui.scr);
+    }
+    ui.scr = lv_obj_create(nullptr);
+    lv_obj_set_style_bg_color(ui.scr, lv_color_hex(0xEFEBE0), 0);
+    lv_obj_set_style_bg_opa(ui.scr, LV_OPA_COVER, 0);
+    lv_obj_set_style_text_font(ui.scr, ListFont(), 0);
+    lv_obj_set_style_text_color(ui.scr, lv_color_black(), 0);
+
+    lv_obj_t* title = lv_label_create(ui.scr);
+    lv_label_set_text(title, "图书库  ·  Home");
+    lv_obj_set_style_text_font(title, ListFont(), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 12, 8);
+
+    lv_obj_t* list = lv_obj_create(ui.scr);
+    lv_obj_remove_style_all(list);
+    lv_obj_set_size(list, EPD_HOR_RES - 24, EPD_VER_RES - 80);
+    lv_obj_align(list, LV_ALIGN_TOP_LEFT, 12, 50);
+    lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
+    lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_ON);
+
+    sh.books = ScanBooks(getenv("EBOOK_LIBDIR") ? getenv("EBOOK_LIBDIR") : "sample");
+    if (sh.books.empty()) {
+        lv_obj_t* empty = lv_label_create(list);
+        lv_label_set_text(empty, "(空)  EBOOK_LIBDIR 未找到 .ebook/.epub");
+    }
+    for (size_t i = 0; i < sh.books.size(); ++i) {
+        // Display just the file name, not the full path.
+        const std::string& p = sh.books[i];
+        const char* nm = p.c_str() + p.find_last_of('/') + 1;
+        BuildRow(list, nm, (i == sh.home_sel));
+    }
+
+    // Settings shortcut row at the bottom.
+    lv_obj_t* gear = lv_label_create(ui.scr);
+    lv_label_set_text(gear, "↓ 设置  ·  ↑/↓ 选择  ·  ⏎ 打开  ·  H 返回");
+    lv_obj_align(gear, LV_ALIGN_BOTTOM_LEFT, 12, -30);
+    lv_obj_set_style_text_font(gear, ListFont(), 0);
+
+    BuildVStrip(ui.scr);
+    lv_screen_load(ui.scr);
+}
+
+void BuildSettingsScreen() {
+    auto& ui = Ui();
+    auto& sh = Shell();
+    if (ui.scr != nullptr && lv_obj_is_valid(ui.scr)) {
+        lv_obj_delete(ui.scr);
+    }
+    ui.scr = lv_obj_create(nullptr);
+    lv_obj_set_style_bg_color(ui.scr, lv_color_hex(0xEFEBE0), 0);
+    lv_obj_set_style_bg_opa(ui.scr, LV_OPA_COVER, 0);
+    lv_obj_set_style_text_font(ui.scr, ListFont(), 0);
+    lv_obj_set_style_text_color(ui.scr, lv_color_black(), 0);
+
+    lv_obj_t* title = lv_label_create(ui.scr);
+    lv_label_set_text(title, "设置  ·  Settings");
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 12, 8);
+
+    lv_obj_t* list = lv_obj_create(ui.scr);
+    lv_obj_remove_style_all(list);
+    lv_obj_set_size(list, EPD_HOR_RES - 24, EPD_VER_RES - 120);
+    lv_obj_align(list, LV_ALIGN_TOP_LEFT, 12, 50);
+    lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
+
+    // Font size rows: one per available size.
+    const int* active_row = &sh.settings_sel;
+    (void)active_row;
+    for (int i = 0; i < kFontSizeCount; ++i) {
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "字号 %d%s", kFontSizes[i],
+                      i == sh.font_size_idx ? "  ✓" : "");
+        BuildRow(list, buf, i == sh.font_size_idx);
+    }
+
+    lv_obj_t* hint = lv_label_create(ui.scr);
+    lv_label_set_text(hint, "↑/↓ 选择字号  ·  ⏎ 应用  ·  ESC/H 返回");
+    lv_obj_align(hint, LV_ALIGN_BOTTOM_LEFT, 12, -30);
+
+    BuildVStrip(ui.scr);
+    lv_screen_load(ui.scr);
 }
 
 }  // namespace
