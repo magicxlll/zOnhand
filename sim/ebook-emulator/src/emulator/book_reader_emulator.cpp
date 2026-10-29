@@ -13,6 +13,9 @@
 #include "reader_page_render.h"
 #include "reader_types.h"
 
+// lv_sdl_mouse_create / lv_sdl_keyboard_create come in via lvgl.h (which pulls
+// in src/drivers/lv_drivers.h). No extra include needed.
+
 namespace {
 
 constexpr lv_coord_t kListPad = 12;
@@ -364,6 +367,56 @@ void book_reader_init(void) {
     s_ui_ready = true;
     EnsureEpdfont();
     ShowIdleScreen();
+}
+
+// ---------------------------------------------------------------------------
+// Input shim (T4): wire host mouse + keyboard onto the simulated device's keys.
+//
+// Design (spec §3.3 + Phase 1 "rail" architecture):
+//   - The real Metalio device has physical keys (BOOT, VOL+, VOL-, POWER) and
+//     virtual keys (vk_home/vk_prev/vk_next via out-of-band touch). In the
+//     reader context, the dominant action is PAGE TURN. So we map:
+//         LEFT / A / Prev  ->  PrevPage()
+//         RIGHT / D / Next ->  NextPage()
+//   - Mouse wheel (encoder) already maps to LV_KEY_RIGHT/LEFT via the SDL
+//     keyboard driver's remap table (SDLK_RIGHT->LV_KEY_RIGHT etc.), so we
+//     just need the KEY events reaching us. We attach an event cb on the
+//     keyboard indev directly (LV_EVENT_KEY) and branch on the key.
+//   - Mouse pointer (click) is already wired: the body object's OnContentClicked
+//     flips the page. The keyboard is an alternative / power-user path.
+//
+// This is intentionally minimal: no free-keyboard "home" yet (that's T5, the
+// virtual-key strip UI). The goal of T4 is "the VM actually responds to input".
+void book_reader_input_init(void) {
+    if (s_ui_ready == false) return;
+
+    // Pointer: click = next page (already handled by OnContentClicked).
+    // Register the SDL mouse indev so clicks register on the body object.
+    lv_indev_t * mouse = lv_sdl_mouse_create();
+    (void)mouse;
+
+    // Keyboard: catch LV_EVENT_KEY and map LEFT/RIGHT/UP/DOWN/ENTER to page ops.
+    lv_indev_t * kbd = lv_sdl_keyboard_create();
+    if (kbd != nullptr) {
+        lv_indev_add_event_cb(
+            kbd,
+            [](lv_event_t * e) {
+                lv_indev_t * indev = (lv_indev_t *)lv_event_get_target(e);
+                const lv_event_code_t code = lv_event_get_code(e);
+                if (code != LV_EVENT_KEY) {
+                    return;
+                }
+                const uint32_t key = lv_indev_get_key(indev);
+                // Map to page turn. UP=prev, DOWN=next (reading flow).
+                if (key == LV_KEY_LEFT || key == LV_KEY_UP || key == LV_KEY_PREV || key == 'a') {
+                    book_reader_prev_page();
+                } else if (key == LV_KEY_RIGHT || key == LV_KEY_DOWN || key == LV_KEY_NEXT || key == 'd') {
+                    book_reader_next_page();
+                }
+            },
+            LV_EVENT_ALL,
+            nullptr);
+    }
 }
 
 void book_reader_set_fontpack_path(const char* /*path*/) {

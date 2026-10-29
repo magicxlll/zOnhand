@@ -11,6 +11,10 @@ extern "C" {
 #define EPD_VER_RES 1216
 
 void book_reader_init(void);
+/* Register host input (SDL mouse pointer + keyboard) so the simulated
+ * device's physical/virtual keys map onto page actions. Call after
+ * book_reader_init() and after the display backend is up. */
+void book_reader_input_init(void);
 void book_reader_set_fontpack_path(const char* path);
 void book_reader_set_epdfont_path(const char* path);
 int book_reader_open_ebook_path(const char* path);

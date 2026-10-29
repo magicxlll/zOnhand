@@ -70,6 +70,7 @@ int main(int argc, char** argv) {
     }
 
     book_reader_init();
+    book_reader_input_init();
 
     if (ebook) {
         if (!book_reader_open_ebook_path(ebook)) {
