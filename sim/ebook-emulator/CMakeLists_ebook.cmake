@@ -52,5 +52,6 @@ function(ebook_emulator_target target_name main_src)
     target_link_libraries(${target_name} lvgl_linux lvgl m z pthread)
 endfunction()
 
-# 原生 SDL 模拟器（480×800）
+# 原生 SDL 模拟器（684×1216 + vstrip 44）
 ebook_emulator_target(ebook_sim src/main_ebook.c)
+ebook_emulator_target(ebook_test src/test_t2_shell.cpp)

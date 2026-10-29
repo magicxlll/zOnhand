@@ -373,8 +373,9 @@ Harness `sim/ebook-emulator/` (copy từ `vendor/.../tools/ebook/emulator/`, sym
 - [ ] **Decision 1 (user chốt 2026-10-29):** "Bo qua, chạy VM trước" — build fw thật (thiếu `78__uart-uhci` + `espressif__iot_eth`) lùi sang sau. Nếu sau này build thật: `78/uart-uhci` có trên GitHub (https://github.com/78/uart-uhci); `espressif/iot_eth` KHÔNG có GitHub công khai (404) → cần user chỉ nguồn. Ghi chú: repo upstream gitignore `managed_components/` + không ship `dependencies.lock` khai báo đủ → clone sạch thiếu 2 component này.
 - [ ] **Decision 2 (user chốt 2026-10-29):** "Cấu trúc VM = (a)+rail [khuyến nghị]" — mở rộng harness ebook-emulator (demo nhanh), các shim viết theo kiến trúc host-shim để sau này đóng thành `sim/` sạch. T4 đúng là bước đầu của "rail" (shim input module, không hack code reader).
 - [x] **T5 XONG (commit 71fc056):** virtual-key strip — 3 vạch HOME/PREV/NEXT (bezel 44px bên phải, đúng vị trí out-of-band FT6336) + phím H/J/K. Reader giữ đúng 684×1216, display 728×1216 (panel + strip). `run.sh` chạy end-to-end clean.
-- [ ] **T2 (sau):** wire `Application::Start` (boot fw thật) — cần stub wifi (B5), verify không treo ở `board.StartNetwork`.
-- REA phân tích `RickyOS-Plus-1.2.9-full.bin` (mục 7).
+- [x] **T2' XONG:** host app shell (Home thư viện sách + Settings chọn 字号 20-40pt) trên BookSession thật. Navigation: Enter mở sách, J/K lật trang, H về trang 0 / Home, Settings đổi font 25->30 render to hơn.
+- [ ] **T2-full (sau T2', theo D3):** chuỗi shim FreeRTOS / NVS / wifi-audio-OTA no-op để boot `Application::Start()` (vendor/cloudzao/main/application.cc:1331).
+- [x] **REA phân tích `RickyOS-Plus-1.2.9-full.bin` (mục 7):** đã scan xong, `docs/feature-list-recommended.md` đã commit (795d606), chờ user review tính năng Phase 2.
 
 ---
 

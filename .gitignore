@@ -14,3 +14,4 @@ sim/build/
 # Sim build outputs + lvgl symlink (rebuilt via docs/spec-phase-1.md §10b)
 sim/ebook-emulator/build*/
 sim/ebook-emulator/lvgl
+*.pos

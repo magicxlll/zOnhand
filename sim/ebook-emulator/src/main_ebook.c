@@ -60,23 +60,20 @@ int main(int argc, char** argv) {
     const char* epdfont = getenv("EBOOK_EPDFONT");
     const char* ebook = getenv("EBOOK_PATH");
 
-    if (epdfont != NULL) {
+    if (epdfont != NULL && epdfont[0] != '\0') {
         book_reader_set_epdfont_path(epdfont);
-    } else {
-        // Default to the bundled .ef. NOTE: upstream `emulator/assets/fonts/*.ef`
-        // are broken symlinks that materialize as 88-byte text files (the original
-        // author's absolute paths), which make epdfont_open() return NULL and crash
-        // BuildScreen(). This copy repairs them to point at tools/epdfont/MiSans-Light/.
-        book_reader_set_epdfont_path("assets/fonts/misans_25_2.ef");
     }
 
     book_reader_init();
     book_reader_input_init();
 
-    if (ebook) {
+    if (ebook && ebook[0] != '\0') {
         if (!book_reader_open_ebook_path(ebook)) {
             fprintf(stderr, "open ebook failed: %s\n", book_reader_last_error());
+            book_reader_show_home();
         }
+    } else {
+        book_reader_show_home();
     }
 
     driver_backends_run_loop();

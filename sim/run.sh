@@ -18,6 +18,9 @@ VENDOR="$ROOT/vendor/cloudzao"
 FONT="$HERE/ebook-emulator/assets/fonts/misans_25_2.ef"
 [ -r "$FONT" ] || { echo "font missing: $FONT" >&2; exit 1; }
 
+export EBOOK_LIBDIR="${EBOOK_LIBDIR:-$HERE/sample}"
+export EBOOK_FONTDIR="${EBOOK_FONTDIR:-$ROOT/vendor/cloudzao/tools/epdfont/MiSans-Light}"
+
 # Build on demand.
 if [ ! -x "$EMU/build-ebook/bin/ebook_sim" ]; then
   echo ">> building ebook_sim (first run)..."
@@ -27,14 +30,15 @@ if [ ! -x "$EMU/build-ebook/bin/ebook_sim" ]; then
 fi
 
 # Sample book if none given.
-BOOK="${1:-$HERE/sample/sample.ebook}"
-if [ ! -f "$BOOK" ]; then
+if [ ! -f "$HERE/sample/sample.ebook" ]; then
   mkdir -p "$HERE/sample"
   printf 'zOnhand sample book\n\nNative LVGL + CloudZao reader core on macOS.\n\nPage-turn test line two. Line three.\n' > "$HERE/sample/sample.txt"
-  ( cd "$VENDOR/tools/ebook" && python3 convert_ebook.py "$HERE/sample/sample.txt" -o "$BOOK" )
+  ( cd "$VENDOR/tools/ebook" && python3 convert_ebook.py "$HERE/sample/sample.txt" -o "$HERE/sample/sample.ebook" )
 fi
+
+BOOK="${1:-}"
 
 echo ">> running: $EMU/build-ebook/bin/ebook_sim  (SDL window will open)"
 # -W/-H omitted: default is EPD_SIM_VIEW_W x EPD_VER_RES (728x1216 = panel + vstrip).
-exec env EBOOK_EPDFONT="$FONT" EBOOK_PATH="$BOOK" \
+exec env EBOOK_EPDFONT="$FONT" EBOOK_PATH="$BOOK" EBOOK_LIBDIR="$EBOOK_LIBDIR" EBOOK_FONTDIR="$EBOOK_FONTDIR" \
   "$EMU/build-ebook/bin/ebook_sim" -b sdl

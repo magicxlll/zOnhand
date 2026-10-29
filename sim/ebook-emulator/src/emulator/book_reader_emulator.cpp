@@ -9,6 +9,7 @@
 #include <dirent.h>
 #include <memory>
 #include <string>
+#include <sys/stat.h>
 #include <vector>
 
 #include "font_emulator.h"
@@ -56,12 +57,89 @@ void DisableScroll(lv_obj_t* obj) {
     lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_OFF);
 }
 
+// ---------------------------------------------------------------------------
+// T2' host app shell: Home (book library) + Settings (font size), layered on
+// the reader core. "Rail" architecture — these are host UI additions; they do
+// NOT touch reader::BookSession (the real CloudZao core). The device's true
+// boot (Application::Start) is T2-full.
+// ---------------------------------------------------------------------------
+enum class ShellScreen { kHome, kSettings, kReader };
+
+// Available .ef font sizes (matches vendor tools/epdfont/MiSans-Light/).
+constexpr int kFontSizes[] = {20, 22, 24, 25, 28, 30, 34, 40};
+constexpr int kFontSizeCount = sizeof(kFontSizes) / sizeof(kFontSizes[0]);
+
+struct ShellState {
+    ShellScreen screen = ShellScreen::kHome;
+    ShellScreen prev_screen = ShellScreen::kHome;
+    int home_sel = 0;
+    int settings_sel = 3;      // which setting row is focused (3 -> 25)
+    int font_size_idx = 3;     // -> kFontSizes[3] = 25 (default, matches shipped .ef)
+    std::vector<std::string> books;   // .ebook/.epub paths
+    std::string font_dir;             // dir holding misans_*.ef
+};
+
+static ShellState& Shell() {
+    static ShellState s;
+    return s;
+}
+
+static std::string ResolveFontDir() {
+    const char* env = getenv("EBOOK_FONTDIR");
+    if (env != nullptr && env[0] != '\0') {
+        struct stat st;
+        if (stat(env, &st) == 0 && S_ISDIR(st.st_mode)) {
+            return env;
+        }
+    }
+    const char* candidates[] = {
+        "vendor/cloudzao/tools/epdfont/MiSans-Light",
+        "../vendor/cloudzao/tools/epdfont/MiSans-Light",
+        "../../vendor/cloudzao/tools/epdfont/MiSans-Light",
+        "../../../vendor/cloudzao/tools/epdfont/MiSans-Light",
+        "/Volumes/ZMac1TB/Workspace/StudioProjects/zOnhand/vendor/cloudzao/tools/epdfont/MiSans-Light",
+    };
+    for (const char* c : candidates) {
+        struct stat st;
+        if (stat(c, &st) == 0 && S_ISDIR(st.st_mode)) {
+            return c;
+        }
+    }
+    return "";
+}
+
+static std::string FontPathFor(int idx) {
+    auto& sh = Shell();
+    if (sh.font_dir.empty()) {
+        sh.font_dir = ResolveFontDir();
+    }
+    if (sh.font_dir.empty() || idx < 0 || idx >= kFontSizeCount) {
+        return "";
+    }
+    return sh.font_dir + "/misans_" + std::to_string(kFontSizes[idx]) + "_2.ef";
+}
+
+void BuildHomeScreen();
+void BuildSettingsScreen();
+bool OpenSessionPath(const char* path);
+
 void EnsureEpdfont() {
     auto& ui = Ui();
-    if (ui.epdfont != nullptr || ui.epdfont_path.empty()) {
+    if (ui.epdfont != nullptr) {
         return;
     }
-    ui.epdfont = epdfont_open(ui.epdfont_path.c_str());
+    if (!ui.epdfont_path.empty()) {
+        ui.epdfont = epdfont_open(ui.epdfont_path.c_str());
+    }
+    if (ui.epdfont == nullptr) {
+        auto& sh = Shell();
+        std::string fallback = FontPathFor(sh.font_size_idx);
+        if (!fallback.empty() && fallback != ui.epdfont_path) {
+            ui.epdfont_path = fallback;
+            epdfont_emulator_set_path(fallback.c_str());
+            ui.epdfont = epdfont_open(fallback.c_str());
+        }
+    }
 }
 
 void ReleaseEpdfont() {
@@ -75,7 +153,13 @@ void ReleaseEpdfont() {
 
 const lv_font_t* UiFont() {
     EnsureEpdfont();
-    return epdfont_get_lv_font(Ui().epdfont);
+    if (Ui().epdfont != nullptr) {
+        const lv_font_t* f = epdfont_get_lv_font(Ui().epdfont);
+        if (f != nullptr) {
+            return f;
+        }
+    }
+    return LV_FONT_DEFAULT;
 }
 
 const lv_font_t* ListFont() {
@@ -265,6 +349,47 @@ static constexpr int VK_HOME = 0, VK_PREV = 1, VK_NEXT = 2;
 void OnVkClick(lv_event_t* e) {
     const int which =
         static_cast<int>(reinterpret_cast<std::intptr_t>(lv_event_get_user_data(e)));
+    auto& sh = Shell();
+
+    if (sh.screen == ShellScreen::kHome) {
+        const int max_sel = static_cast<int>(sh.books.size());
+        if (which == VK_PREV) {
+            if (sh.home_sel > 0) {
+                sh.home_sel--;
+                BuildHomeScreen();
+            }
+        } else if (which == VK_NEXT) {
+            if (sh.home_sel < max_sel) {
+                sh.home_sel++;
+                BuildHomeScreen();
+            }
+        } else if (which == VK_HOME) {
+            if (sh.home_sel < static_cast<int>(sh.books.size())) {
+                OpenSessionPath(sh.books[sh.home_sel].c_str());
+            } else {
+                book_reader_show_settings();
+            }
+        }
+        return;
+    }
+
+    if (sh.screen == ShellScreen::kSettings) {
+        if (which == VK_PREV) {
+            if (sh.settings_sel > 0) {
+                sh.settings_sel--;
+                BuildSettingsScreen();
+            }
+        } else if (which == VK_NEXT) {
+            if (sh.settings_sel < kFontSizeCount - 1) {
+                sh.settings_sel++;
+                BuildSettingsScreen();
+            }
+        } else if (which == VK_HOME) {
+            book_reader_show_home();
+        }
+        return;
+    }
+
     if (which == VK_HOME) {
         book_reader_vk_home();
     } else if (which == VK_PREV) {
@@ -318,9 +443,7 @@ void BuildVStrip(lv_obj_t* root) {
 
 void BuildScreen() {
     auto& ui = Ui();
-    if (ui.scr != nullptr && lv_obj_is_valid(ui.scr)) {
-        lv_obj_delete(ui.scr);
-    }
+    lv_obj_t* old_scr = ui.scr;
     ui.scr = lv_obj_create(nullptr);
     lv_obj_set_style_bg_color(ui.scr, lv_color_hex(0xEFEBE0), 0);
     lv_obj_set_style_bg_opa(ui.scr, LV_OPA_COVER, 0);
@@ -361,6 +484,9 @@ void BuildScreen() {
 
     BuildVStrip(ui.scr);
     lv_screen_load(ui.scr);
+    if (old_scr != nullptr && lv_obj_is_valid(old_scr)) {
+        lv_obj_delete(old_scr);
+    }
 }
 
 void ShowIdleScreen() {
@@ -425,47 +551,25 @@ bool OpenSessionPath(const char* path) {
         return false;
     }
 
+    Shell().screen = ShellScreen::kReader;
     BuildScreen();
     RenderPage();
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// T2' host app shell: Home (book library) + Settings (font size), layered on
-// the reader core. "Rail" architecture — these are host UI additions; they do
-// NOT touch reader::BookSession (the real CloudZao core). The device's true
-// boot (Application::Start) is T2-full.
-// ---------------------------------------------------------------------------
-enum class ShellScreen { kHome, kSettings, kReader };
-
-// Available .ef font sizes (matches vendor tools/epdfont/MiSans-Light/).
-constexpr int kFontSizes[] = {20, 22, 24, 25, 28, 30, 34, 40};
-constexpr int kFontSizeCount = sizeof(kFontSizes) / sizeof(kFontSizes[0]);
-
-struct ShellState {
-    ShellScreen screen = ShellScreen::kHome;
-    int home_sel = 0;
-    int settings_sel = 0;      // which setting row is focused
-    int font_size_idx = 3;     // -> kFontSizes[3] = 25 (default, matches shipped .ef)
-    std::vector<std::string> books;   // .ebook/.epub paths
-    std::string font_dir;             // dir holding misans_*.ef
-};
-
-static ShellState& Shell() {
-    static ShellState s;
-    return s;
-}
-
 // Scan a directory for readable e-book files (.ebook / .epub).
 static std::vector<std::string> ScanBooks(const char* dir) {
     std::vector<std::string> out;
-    if (dir == nullptr || dir[0] == '\0') {
-        return out;
-    }
     std::vector<std::string> dirs;
-    dirs.push_back(dir);
-    // Also try a common sub-directory "Books".
-    dirs.push_back(std::string(dir) + "/Books");
+    if (dir != nullptr && dir[0] != '\0') {
+        dirs.push_back(dir);
+        dirs.push_back(std::string(dir) + "/Books");
+    }
+    dirs.push_back("sample");
+    dirs.push_back("sim/sample");
+    dirs.push_back("../sample");
+    dirs.push_back("../../sim/sample");
+
     for (const auto& d : dirs) {
         DIR* dp = ::opendir(d.c_str());
         if (dp == nullptr) {
@@ -484,21 +588,19 @@ static std::vector<std::string> ScanBooks(const char* dir) {
             if (name.size() >= 6 &&
                 (name.compare(name.size() - 6, 6, ".ebook") == 0 ||
                  name.compare(name.size() - 5, 5, ".epub") == 0)) {
-                out.push_back(base + "/" + name);
+                std::string full_path = base + "/" + name;
+                if (std::find(out.begin(), out.end(), full_path) == out.end()) {
+                    out.push_back(full_path);
+                }
             }
         }
         ::closedir(dp);
+        if (!out.empty() && dir != nullptr && dir[0] != '\0' && (d == dir || d == std::string(dir) + "/Books")) {
+            break;
+        }
     }
     std::sort(out.begin(), out.end());
     return out;
-}
-
-static std::string FontPathFor(int idx) {
-    auto& sh = Shell();
-    if (sh.font_dir.empty()) {
-        return "";
-    }
-    return sh.font_dir + "/misans_" + std::to_string(kFontSizes[idx]) + "_2.ef";
 }
 
 // Build a single scrollable list row. Returns the object.
@@ -527,9 +629,9 @@ static lv_obj_t* BuildRow(lv_obj_t* parent, const char* text, bool selected) {
 void BuildHomeScreen() {
     auto& ui = Ui();
     auto& sh = Shell();
-    if (ui.scr != nullptr && lv_obj_is_valid(ui.scr)) {
-        lv_obj_delete(ui.scr);
-    }
+    lv_obj_t* old_scr = ui.scr;
+    ui.content = nullptr;
+    ui.footer = nullptr;
     ui.scr = lv_obj_create(nullptr);
     lv_obj_set_style_bg_color(ui.scr, lv_color_hex(0xEFEBE0), 0);
     lv_obj_set_style_bg_opa(ui.scr, LV_OPA_COVER, 0);
@@ -552,30 +654,57 @@ void BuildHomeScreen() {
     if (sh.books.empty()) {
         lv_obj_t* empty = lv_label_create(list);
         lv_label_set_text(empty, "(空)  EBOOK_LIBDIR 未找到 .ebook/.epub");
+        lv_obj_set_style_pad_all(empty, 8, 0);
     }
     for (size_t i = 0; i < sh.books.size(); ++i) {
         // Display just the file name, not the full path.
         const std::string& p = sh.books[i];
         const char* nm = p.c_str() + p.find_last_of('/') + 1;
-        BuildRow(list, nm, (i == sh.home_sel));
+        lv_obj_t* row = BuildRow(list, nm, (static_cast<int>(i) == sh.home_sel));
+        lv_obj_add_event_cb(
+            row,
+            [](lv_event_t* e) {
+                int idx = static_cast<int>(reinterpret_cast<std::intptr_t>(lv_event_get_user_data(e)));
+                auto& s = Shell();
+                s.home_sel = idx;
+                if (idx >= 0 && idx < static_cast<int>(s.books.size())) {
+                    OpenSessionPath(s.books[idx].c_str());
+                }
+            },
+            LV_EVENT_CLICKED,
+            reinterpret_cast<void*>(static_cast<std::intptr_t>(i)));
     }
 
-    // Settings shortcut row at the bottom.
+    // Settings shortcut row inside the list.
+    const int settings_idx = static_cast<int>(sh.books.size());
+    lv_obj_t* set_row = BuildRow(list, "⚙  系统设置 · Settings", sh.home_sel == settings_idx);
+    lv_obj_add_event_cb(
+        set_row,
+        [](lv_event_t*) {
+            book_reader_show_settings();
+        },
+        LV_EVENT_CLICKED,
+        nullptr);
+
+    // Settings shortcut / hint at the bottom.
     lv_obj_t* gear = lv_label_create(ui.scr);
-    lv_label_set_text(gear, "↓ 设置  ·  ↑/↓ 选择  ·  ⏎ 打开  ·  H 返回");
+    lv_label_set_text(gear, "↑/↓ 选择  ·  ⏎ 打开  ·  S 设置  ·  H 返回");
     lv_obj_align(gear, LV_ALIGN_BOTTOM_LEFT, 12, -30);
     lv_obj_set_style_text_font(gear, ListFont(), 0);
 
     BuildVStrip(ui.scr);
     lv_screen_load(ui.scr);
+    if (old_scr != nullptr && lv_obj_is_valid(old_scr)) {
+        lv_obj_delete(old_scr);
+    }
 }
 
 void BuildSettingsScreen() {
     auto& ui = Ui();
     auto& sh = Shell();
-    if (ui.scr != nullptr && lv_obj_is_valid(ui.scr)) {
-        lv_obj_delete(ui.scr);
-    }
+    lv_obj_t* old_scr = ui.scr;
+    ui.content = nullptr;
+    ui.footer = nullptr;
     ui.scr = lv_obj_create(nullptr);
     lv_obj_set_style_bg_color(ui.scr, lv_color_hex(0xEFEBE0), 0);
     lv_obj_set_style_bg_opa(ui.scr, LV_OPA_COVER, 0);
@@ -592,14 +721,28 @@ void BuildSettingsScreen() {
     lv_obj_align(list, LV_ALIGN_TOP_LEFT, 12, 50);
     lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
 
-    // Font size rows: one per available size.
-    const int* active_row = &sh.settings_sel;
-    (void)active_row;
     for (int i = 0; i < kFontSizeCount; ++i) {
         char buf[32];
         std::snprintf(buf, sizeof(buf), "字号 %d%s", kFontSizes[i],
                       i == sh.font_size_idx ? "  ✓" : "");
-        BuildRow(list, buf, i == sh.font_size_idx);
+        lv_obj_t* row = BuildRow(list, buf, i == sh.settings_sel);
+        lv_obj_add_event_cb(
+            row,
+            [](lv_event_t* e) {
+                int idx = static_cast<int>(reinterpret_cast<std::intptr_t>(lv_event_get_user_data(e)));
+                auto& s = Shell();
+                s.settings_sel = idx;
+                s.font_size_idx = idx;
+                book_reader_set_epdfont_path(FontPathFor(idx).c_str());
+                auto& u = Ui();
+                if (u.session && u.session->IsOpen()) {
+                    s.screen = ShellScreen::kReader;
+                } else {
+                    BuildSettingsScreen();
+                }
+            },
+            LV_EVENT_CLICKED,
+            reinterpret_cast<void*>(static_cast<std::intptr_t>(i)));
     }
 
     lv_obj_t* hint = lv_label_create(ui.scr);
@@ -608,6 +751,9 @@ void BuildSettingsScreen() {
 
     BuildVStrip(ui.scr);
     lv_screen_load(ui.scr);
+    if (old_scr != nullptr && lv_obj_is_valid(old_scr)) {
+        lv_obj_delete(old_scr);
+    }
 }
 
 }  // namespace
@@ -616,28 +762,31 @@ extern "C" {
 
 void book_reader_init(void) {
     s_ui_ready = true;
+    auto& sh = Shell();
+    if (sh.font_dir.empty()) {
+        sh.font_dir = ResolveFontDir();
+    }
     EnsureEpdfont();
-    ShowIdleScreen();
+}
+
+void book_reader_show_home(void) {
+    auto& sh = Shell();
+    sh.screen = ShellScreen::kHome;
+    BuildHomeScreen();
+}
+
+void book_reader_show_settings(void) {
+    auto& sh = Shell();
+    sh.prev_screen = sh.screen;
+    sh.screen = ShellScreen::kSettings;
+    sh.settings_sel = sh.font_size_idx;
+    BuildSettingsScreen();
 }
 
 // ---------------------------------------------------------------------------
-// Input shim (T4): wire host mouse + keyboard onto the simulated device's keys.
-//
-// Design (spec §3.3 + Phase 1 "rail" architecture):
-//   - The real Metalio device has physical keys (BOOT, VOL+, VOL-, POWER) and
-//     virtual keys (vk_home/vk_prev/vk_next via out-of-band touch). In the
-//     reader context, the dominant action is PAGE TURN. So we map:
-//         LEFT / A / Prev  ->  PrevPage()
-//         RIGHT / D / Next ->  NextPage()
-//   - Mouse wheel (encoder) already maps to LV_KEY_RIGHT/LEFT via the SDL
-//     keyboard driver's remap table (SDLK_RIGHT->LV_KEY_RIGHT etc.), so we
-//     just need the KEY events reaching us. We attach an event cb on the
-//     keyboard indev directly (LV_EVENT_KEY) and branch on the key.
-//   - Mouse pointer (click) is already wired: the body object's OnContentClicked
-//     flips the page. The keyboard is an alternative / power-user path.
-//
-// This is intentionally minimal: no free-keyboard "home" yet (that's T5, the
-// virtual-key strip UI). The goal of T4 is "the VM actually responds to input".
+// Input shim (T4/T2'): wire host mouse + keyboard onto the simulated device's keys.
+// Mode-aware: handles navigation on Home, Settings, and Reader screens.
+// ---------------------------------------------------------------------------
 void book_reader_input_init(void) {
     if (s_ui_ready == false) return;
 
@@ -646,7 +795,7 @@ void book_reader_input_init(void) {
     lv_indev_t * mouse = lv_sdl_mouse_create();
     (void)mouse;
 
-    // Keyboard: catch LV_EVENT_KEY and map LEFT/RIGHT/UP/DOWN/ENTER to page ops.
+    // Keyboard: catch LV_EVENT_KEY and map mode-aware navigation.
     lv_indev_t * kbd = lv_sdl_keyboard_create();
     if (kbd != nullptr) {
         lv_indev_add_event_cb(
@@ -658,16 +807,76 @@ void book_reader_input_init(void) {
                     return;
                 }
                 const uint32_t key = lv_indev_get_key(indev);
-                // Page-turn keys (reading flow; VOL+/VOL- double-duty on real
-                // device = menu-only, out of reader scope).
-                if (key == LV_KEY_LEFT || key == LV_KEY_UP || key == LV_KEY_PREV || key == 'a' || key == 'k') {
-                    book_reader_prev_page();
-                } else if (key == LV_KEY_RIGHT || key == LV_KEY_DOWN || key == LV_KEY_NEXT || key == 'd' || key == 'j') {
-                    book_reader_next_page();
-                }
-                // T5 virtual keys (match the on-screen strip labels).
-                else if (key == 'h') {
-                    book_reader_vk_home();
+                auto& sh = Shell();
+
+                if (sh.screen == ShellScreen::kHome) {
+                    const int max_sel = static_cast<int>(sh.books.size());
+                    if (key == LV_KEY_UP || key == LV_KEY_LEFT || key == 'k' || key == 'K' || key == 'a' || key == 'A') {
+                        if (sh.home_sel > 0) {
+                            sh.home_sel--;
+                            BuildHomeScreen();
+                        }
+                    } else if (key == LV_KEY_DOWN || key == LV_KEY_RIGHT || key == 'j' || key == 'J' || key == 'd' || key == 'D') {
+                        if (sh.home_sel < max_sel) {
+                            sh.home_sel++;
+                            BuildHomeScreen();
+                        }
+                    } else if (key == LV_KEY_ENTER || key == '\n' || key == '\r') {
+                        if (sh.home_sel < static_cast<int>(sh.books.size())) {
+                            OpenSessionPath(sh.books[sh.home_sel].c_str());
+                        } else {
+                            book_reader_show_settings();
+                        }
+                    } else if (key == 's' || key == 'S') {
+                        book_reader_show_settings();
+                    } else if (key == 'h' || key == 'H' || key == LV_KEY_ESC) {
+                        sh.home_sel = 0;
+                        BuildHomeScreen();
+                    }
+                } else if (sh.screen == ShellScreen::kSettings) {
+                    if (key == LV_KEY_UP || key == LV_KEY_LEFT || key == 'k' || key == 'K' || key == 'a' || key == 'A') {
+                        if (sh.settings_sel > 0) {
+                            sh.settings_sel--;
+                            BuildSettingsScreen();
+                        }
+                    } else if (key == LV_KEY_DOWN || key == LV_KEY_RIGHT || key == 'j' || key == 'J' || key == 'd' || key == 'D') {
+                        if (sh.settings_sel < kFontSizeCount - 1) {
+                            sh.settings_sel++;
+                            BuildSettingsScreen();
+                        }
+                    } else if (key == LV_KEY_ENTER || key == '\n' || key == '\r') {
+                        sh.font_size_idx = sh.settings_sel;
+                        std::string fp = FontPathFor(sh.font_size_idx);
+                        book_reader_set_epdfont_path(fp.c_str());
+                        auto& u = Ui();
+                        if (u.session && u.session->IsOpen()) {
+                            sh.screen = ShellScreen::kReader;
+                        } else {
+                            BuildSettingsScreen();
+                        }
+                    } else if (key == LV_KEY_ESC || key == 'h' || key == 'H' || key == 'q' || key == 'Q') {
+                        auto& u = Ui();
+                        if (sh.prev_screen == ShellScreen::kReader && u.session && u.session->IsOpen()) {
+                            sh.screen = ShellScreen::kReader;
+                            BuildScreen();
+                            RenderPage();
+                        } else {
+                            book_reader_show_home();
+                        }
+                    }
+                } else {  // ShellScreen::kReader
+                    if (key == LV_KEY_LEFT || key == LV_KEY_UP || key == LV_KEY_PREV || key == 'a' || key == 'A' || key == 'k' || key == 'K') {
+                        book_reader_prev_page();
+                    } else if (key == LV_KEY_RIGHT || key == LV_KEY_DOWN || key == LV_KEY_NEXT || key == 'd' || key == 'D' || key == 'j' || key == 'J') {
+                        book_reader_next_page();
+                    } else if (key == 'h' || key == 'H') {
+                        book_reader_vk_home();
+                    } else if (key == 's' || key == 'S') {
+                        sh.prev_screen = ShellScreen::kReader;
+                        book_reader_show_settings();
+                    } else if (key == LV_KEY_ESC || key == 'q' || key == 'Q') {
+                        book_reader_show_home();
+                    }
                 }
             },
             LV_EVENT_ALL,
@@ -681,6 +890,7 @@ void book_reader_set_fontpack_path(const char* /*path*/) {
 
 void book_reader_set_epdfont_path(const char* path) {
     auto& ui = Ui();
+    auto& sh = Shell();
     const bool had_book = ui.session && ui.session->IsOpen();
     int saved_toc = -1;
     int saved_page = 0;
@@ -721,7 +931,13 @@ void book_reader_set_epdfont_path(const char* path) {
         BuildScreen();
         RenderPage();
     } else {
-        ShowIdleScreen();
+        if (sh.screen == ShellScreen::kHome) {
+            BuildHomeScreen();
+        } else if (sh.screen == ShellScreen::kSettings) {
+            BuildSettingsScreen();
+        } else {
+            ShowIdleScreen();
+        }
     }
 }
 
@@ -764,13 +980,17 @@ void book_reader_next_page(void) {
 
 void book_reader_vk_home(void) {
     auto& ui = Ui();
-    // Sim semantic (no app shell in Phase 1): "home" = back to first page of
-    // the open book. The device's vk_home long-press "one-tap back to system
-    // home screen" is T2+ (needs Application::Start / screen stack).
-    if (ui.session && ui.session->IsOpen() && !ui.session->GoToPage(0)) {
-        return;
+    auto& sh = Shell();
+    if (sh.screen == ShellScreen::kReader) {
+        if (ui.session && ui.session->IsOpen()) {
+            if (ui.session->CurrentPage() > 0) {
+                ui.session->GoToPage(0);
+                RenderPage();
+                return;
+            }
+        }
     }
-    RenderPage();
+    book_reader_show_home();
 }
 
 void book_reader_prev_page(void) {
