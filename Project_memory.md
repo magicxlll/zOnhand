@@ -46,10 +46,13 @@ Mục tiêu (chốt 2026-10-28, sau phỏng vấn intent):
 - [x] **T1 de-risk: harness native `ebook_sim` build + CHẠY được trên macOS** (SDL2 window, LVGL init, đọc .ebook) sau 5 vá trong `sim/` (chi tiết `docs/spec-phase-1.md` §10b Phát hiện #4).
 - [x] **T1 (revise) XONG:** harness native `ebook_sim` build + CHẠY được trên macOS (SDL2, LVGL init, đọc .ebook 1 chapter, chạy >7s không crash). Vá 5 chỗ trong `sim/` (chi tiết `docs/spec-phase-1.md` §10b Phát hiện #4). Crash SIGSEGV đã fix (root cause: font `.ef` là symlink hỏng upstream → sửa symlink).
 - [x] **`sim/run.sh`** launcher end-to-end: `cd sim && ./run.sh` (build + gen sample .ebook + chạy, không cần env).
-- [ ] **T3 (next):** retarget panel 480×800 → 684×1216 (đổi `EPD_HOR_RES/EPD_VER_RES` trong `book_reader_emulator.h` + dùng font Plus).
+- [ ] **T3 (next, đang làm):** retarget panel 480×800 → 684×1216 (đổi `EPD_HOR_RES/EPD_VER_RES` trong `book_reader_emulator.h` + dùng font Plus).
 - [ ] **T2:** verify `Application::Start` không treo ở `board.StartNetwork` (stub wifi) trước khi wire boot thật.
 - [ ] REA phân tích `RickyOS-Plus-1.2.9-full.bin` → danh sách tính năng (đề xuất, user review)
-- [ ] **Decision 2 (chờ user):** build fw thật fail — thiếu managed components `78__uart-uhci` + `espressif__iot_eth` (không có trong `main/idf_component.yml` upstream; GitHub upstream 404 với uart-uhci). Chờ user: (a) chỉ nguồn fetch (đụng vendor), hay (b) chấp nhận baseline = harness native.
+
+### Decision (user chốt 2026-10-29)
+- **Cấu trúc VM: "(a) + rail [khuyến nghị]"** — mở rộng harness `ebook-emulator` ĐÃ chạy (demo nhanh), nhưng viết các shim phím/touch/SD/NVS **theo kiến trúc host-shim** để sau này đóng được thành `sim/` sạch. Không viết lại từ 0 (loại hướng (b)-thuần).
+- **Build fw thật: "bo qua, chạy VM trước"** — chưa có máy thật để so, chưa cần baseline build. Lùi việc `idf.py build` (thiếu managed components `78__uart-uhci` + `espressif__iot_eth`) sang sau. Tập trung VM. (Chú ý: `78/uart-uhci` CÓ trên GitHub; `espressif/iot_eth` KHÔNG có GitHub công khai — cần user chỉ nguồn nếu after này decide build thật.)
 
 ## 5. Blockers & Open Questions
 

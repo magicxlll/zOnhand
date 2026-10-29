@@ -308,7 +308,7 @@ void ShowIdleScreen() {
 
     const lv_font_t* font = UiFont();
     lv_obj_t* lbl = lv_label_create(ui.scr);
-    lv_label_set_text(lbl, "墨水屏模拟器\n480 × 800\n\n从书库打开 .ebook 预览");
+    lv_label_set_text(lbl, "墨水屏模拟器\n684 × 1216\n\n从书库打开 .ebook 预览");
     if (font != nullptr) {
         lv_obj_set_style_text_font(lbl, font, 0);
     }

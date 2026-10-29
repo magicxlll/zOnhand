@@ -7,8 +7,8 @@ extern "C" {
 #endif
 
 /** GDEM0397T81P 竖屏逻辑分辨率（与固件 ROTATE_270 后 LV_HOR×LV_VER 一致） */
-#define EPD_HOR_RES 480
-#define EPD_VER_RES 800
+#define EPD_HOR_RES 684
+#define EPD_VER_RES 1216
 
 void book_reader_init(void);
 void book_reader_set_fontpack_path(const char* path);
