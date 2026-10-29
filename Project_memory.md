@@ -92,3 +92,4 @@ Mục tiêu (chốt 2026-10-28, sau phỏng vấn intent):
 - `firmware-reference/` — `RickyOS-Plus-1.2.9-full.bin` + output REA
 - `sim/ebook-emulator/` — harness native (copy từ `vendor/.../tools/ebook/emulator/`, `lvgl/` = symlink)
 - `sim/run.sh` — launcher; `sim/sample/` — .ebook mẫu
+- `Run_Simulator.command` / `Mo_May_Ao.command` — launcher click đúp chạy ngay từ Finder macOS
