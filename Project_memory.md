@@ -52,7 +52,7 @@ Mục tiêu (chốt 2026-10-28, sau phỏng vấn intent):
 - [ ] **T2-full ĐANG LÀM (theo D3, chuỗi shim 1 commit/shim):**
   - [x] `sim/shim/freertos/` — `xTaskCreate`→`std::thread`, `vTaskDelay`, `xEventGroup`, `xQueue`, `xSemaphore`, `esp_timer` (periodic/once via timer thread), `esp_err_to_name`. Đã test PASS 100% qua `test_freertos_shim` (commit `e9464a4`).
   - [x] `sim/shim/nvs/` — `nvs_*` (get/set str, i32, u8, blob, erase, commit, flash_erase) → file-based persistent storage (`$ZONHAND_NVS_DIR` hoặc `~/.zOnhand_sim/nvs/*.dat`). Đã test PASS 100% qua `test_nvs_shim`.
-  - [ ] `sim/shim/wifi_audio_ota_noop/` — `board.StartNetwork()` no-op, audio no-op, OTA skip.
+  - [x] `sim/shim/wifi_audio_ota_noop/` — `board.StartNetwork()` no-op, audio no-op, OTA skip, `esp_wifi` / `esp_netif` / `esp_random` / `esp_chip_info` / `esp_app_desc` stubs. Đã test PASS 100% qua `test_wifi_audio_ota_shim`.
   - [ ] Boot `Application::Start()` thật (verify log boot khớp source `vendor/cloudzao/main/application.cc:1331`).
 - [ ] **Chờ user review:** danh sách tính năng RickyOS trong `docs/feature-list-recommended.md` (quyết Phase 2 scope).
 

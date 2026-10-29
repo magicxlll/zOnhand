@@ -4,7 +4,9 @@ project(nvs_shim C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../freertos freertos_build)
+if(NOT TARGET freertos_shim)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../freertos freertos_build)
+endif()
 
 add_library(nvs_shim STATIC
     src/nvs_shim.cpp
