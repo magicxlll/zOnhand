@@ -50,8 +50,8 @@ Mục tiêu (chốt 2026-10-28, sau phỏng vấn intent):
 - [x] **REA `.bin` XONG (09:15):** `docs/feature-list-recommended.md` (đã commit ở 795d606). Phát hiện: .bin = **CrossPoint Reader rebrand (RickyOS), Arduino-ESP32 RC1, KHÔNG cùng codebase** `vendor/cloudzao`. Tính năng riêng (WeRead/KOReader sync, OPDS, gamification, Gomoku, WAV) = Phase 2/3.
 - [x] **T2' XONG:** app shell host (Home=lưới thư viện sách + Settings=chọn 字号 qua `.ef` thật) trên `BookSession` thật. Đủ 5 mục: impl `book_reader_show_home`/`settings`, input mode-aware (Home/Settings/Reader), font resolution an toàn + fallback, boot default -> Home, verify end-to-end qua `ebook_test` và `run.sh` (Home hiện sách → Enter mở → đọc J/K/H → Settings đổi font 25→30 render to hơn).
 - [ ] **T2-full ĐANG LÀM (theo D3, chuỗi shim 1 commit/shim):**
-  - [x] `sim/shim/freertos/` — `xTaskCreate`→`std::thread`, `vTaskDelay`, `xEventGroup`, `xQueue`, `xSemaphore`, `esp_timer` (periodic/once via timer thread), `esp_err_to_name`. Đã test PASS 100% qua `test_freertos_shim`.
-  - [ ] `sim/shim/nvs/` — `nvs_*` → file-based per namespace (`~/.zOnhand_sim/nvs/*.json` hoặc binary flat).
+  - [x] `sim/shim/freertos/` — `xTaskCreate`→`std::thread`, `vTaskDelay`, `xEventGroup`, `xQueue`, `xSemaphore`, `esp_timer` (periodic/once via timer thread), `esp_err_to_name`. Đã test PASS 100% qua `test_freertos_shim` (commit `e9464a4`).
+  - [x] `sim/shim/nvs/` — `nvs_*` (get/set str, i32, u8, blob, erase, commit, flash_erase) → file-based persistent storage (`$ZONHAND_NVS_DIR` hoặc `~/.zOnhand_sim/nvs/*.dat`). Đã test PASS 100% qua `test_nvs_shim`.
   - [ ] `sim/shim/wifi_audio_ota_noop/` — `board.StartNetwork()` no-op, audio no-op, OTA skip.
   - [ ] Boot `Application::Start()` thật (verify log boot khớp source `vendor/cloudzao/main/application.cc:1331`).
 - [ ] **Chờ user review:** danh sách tính năng RickyOS trong `docs/feature-list-recommended.md` (quyết Phase 2 scope).
