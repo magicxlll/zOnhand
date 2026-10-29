@@ -103,6 +103,11 @@ esp_err_t esp_timer_delete(esp_timer_handle_t timer) {
     return ESP_OK;
 }
 
+bool esp_timer_is_active(esp_timer_handle_t timer) {
+    if (!timer) return false;
+    return timer->is_running.load();
+}
+
 int64_t esp_timer_get_time(void) {
     using clock = std::chrono::steady_clock;
     return static_cast<int64_t>(

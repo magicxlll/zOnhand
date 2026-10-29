@@ -374,7 +374,7 @@ Harness `sim/ebook-emulator/` (copy từ `vendor/.../tools/ebook/emulator/`, sym
 - [ ] **Decision 2 (user chốt 2026-10-29):** "Cấu trúc VM = (a)+rail [khuyến nghị]" — mở rộng harness ebook-emulator (demo nhanh), các shim viết theo kiến trúc host-shim để sau này đóng thành `sim/` sạch. T4 đúng là bước đầu của "rail" (shim input module, không hack code reader).
 - [x] **T5 XONG (commit 71fc056):** virtual-key strip — 3 vạch HOME/PREV/NEXT (bezel 44px bên phải, đúng vị trí out-of-band FT6336) + phím H/J/K. Reader giữ đúng 684×1216, display 728×1216 (panel + strip). `run.sh` chạy end-to-end clean.
 - [x] **T2' XONG:** host app shell (Home thư viện sách + Settings chọn 字号 20-40pt) trên BookSession thật. Navigation: Enter mở sách, J/K lật trang, H về trang 0 / Home, Settings đổi font 25->30 render to hơn.
-- [ ] **T2-full (sau T2', theo D3):** chuỗi shim FreeRTOS / NVS / wifi-audio-OTA no-op để boot `Application::Start()` (vendor/cloudzao/main/application.cc:1331).
+- [x] **T2-full XONG (theo D3, chuỗi shim 1 commit/shim):** chuỗi shim FreeRTOS (`xTaskCreate`→`std::thread`, `esp_timer`), NVS (file-based persistent), wifi/audio/OTA no-op để boot `Application::Start()` (vendor/cloudzao/main/application.cc:1331) chạy qua 100% với log boot chuẩn xác, không sửa 1 dòng code trong vendor/.
 - [x] **REA phân tích `RickyOS-Plus-1.2.9-full.bin` (mục 7):** đã scan xong, `docs/feature-list-recommended.md` đã commit (795d606), chờ user review tính năng Phase 2.
 
 ---

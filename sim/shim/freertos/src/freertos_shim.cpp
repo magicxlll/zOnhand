@@ -473,4 +473,9 @@ const char *esp_err_to_name(esp_err_t code) {
     }
 }
 
+void esp_restart(void) {
+    std::fprintf(stderr, "[Sim] esp_restart requested - exiting.\n");
+    std::exit(0);
+}
+
 }  // extern "C"

@@ -35,6 +35,8 @@ esp_err_t esp_timer_stop(esp_timer_handle_t timer);
 
 esp_err_t esp_timer_delete(esp_timer_handle_t timer);
 
+bool esp_timer_is_active(esp_timer_handle_t timer);
+
 int64_t esp_timer_get_time(void);
 
 #ifdef __cplusplus

@@ -25,6 +25,7 @@ typedef int32_t esp_err_t;
 #define ESP_ERR_NOT_FINISHED        0x10C
 
 const char *esp_err_to_name(esp_err_t code);
+void esp_restart(void);
 
 #ifdef __cplusplus
 }

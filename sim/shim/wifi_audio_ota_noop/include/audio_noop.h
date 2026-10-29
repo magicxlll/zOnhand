@@ -5,10 +5,6 @@
 #include <cstdint>
 #include <string>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 void MetalioAudio_Init(void);
 void MetalioAudio_RequestModeInit(void);
 void MetalioAudio_OnPowerOff(void);
@@ -18,10 +14,6 @@ bool MetalioAudio_EnsureStarted(void);
 bool MetalioAudio_ModeReady(void);
 void MetalioAudio_SetAmpState(bool enable);
 bool MetalioAudio_GetAmpState(void);
-
-#ifdef __cplusplus
-}
-#endif
 
 namespace sim {
 
