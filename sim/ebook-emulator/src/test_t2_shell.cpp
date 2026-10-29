@@ -168,6 +168,18 @@ int main(int /*argc*/, char** /*argv*/) {
     book_reader_init();
     printf("    book_reader_init() reloaded NVS configuration successfully.\n");
 
+    // Step 8: Test clicking VStrip buttons without crash
+    printf("[8] Testing Virtual Keys (VStrip) Click Stability...\n");
+    book_reader_show_home();
+    lv_timer_handler();
+    book_reader_prev_page();
+    lv_timer_handler();
+    book_reader_next_page();
+    lv_timer_handler();
+    book_reader_vk_home();
+    lv_timer_handler();
+    printf("    Virtual Keys navigation executed without crash.\n");
+
     printf("=== All T2' Tests Passed Successfully! ===\n");
     return 0;
 }

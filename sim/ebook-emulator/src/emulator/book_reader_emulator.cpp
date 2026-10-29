@@ -614,7 +614,7 @@ void BuildScreen() {
     BuildVStrip(ui.scr);
     lv_screen_load(ui.scr);
     if (old_scr != nullptr && lv_obj_is_valid(old_scr)) {
-        lv_obj_delete(old_scr);
+        lv_obj_delete_async(old_scr);
     }
 }
 
@@ -624,7 +624,7 @@ void ShowIdleScreen() {
         return;
     }
     if (ui.scr != nullptr && lv_obj_is_valid(ui.scr)) {
-        lv_obj_delete(ui.scr);
+        lv_obj_delete_async(ui.scr);
     }
     ui.content = nullptr;
     ui.footer = nullptr;
@@ -838,7 +838,7 @@ void BuildHomeScreen() {
     BuildVStrip(ui.scr);
     lv_screen_load(ui.scr);
     if (old_scr != nullptr && lv_obj_is_valid(old_scr)) {
-        lv_obj_delete(old_scr);
+        lv_obj_delete_async(old_scr);
     }
 }
 
@@ -945,7 +945,7 @@ void BuildSettingsScreen() {
     BuildVStrip(ui.scr);
     lv_screen_load(ui.scr);
     if (old_scr != nullptr && lv_obj_is_valid(old_scr)) {
-        lv_obj_delete(old_scr);
+        lv_obj_delete_async(old_scr);
     }
 }
 
@@ -1006,7 +1006,7 @@ void BuildStandbyScreen() {
     BuildVStrip(ui.scr);
     lv_screen_load(ui.scr);
     if (old_scr != nullptr && lv_obj_is_valid(old_scr)) {
-        lv_obj_delete(old_scr);
+        lv_obj_delete_async(old_scr);
     }
 }
 
